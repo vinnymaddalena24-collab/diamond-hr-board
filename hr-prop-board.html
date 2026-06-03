@@ -513,6 +513,30 @@ function pClass(p){return p.q==='elite'?'ple':p.q==='danger'?'pld':'plm';}
 function wlabel(wx){if(!wx||wx.d==='dome')return{c:'bdm',t:'DOME'};if(wx.d==='out')return{c:'bwo',t:`↑${wx.w}MPH OUT`};if(wx.d==='in')return{c:'bwi',t:`↓${wx.w}MPH IN`};return{c:'bwc',t:`↔${wx.w}MPH`};}
 function pfBadge(pf){if(pf>=140)return{c:'bhr',t:`🌡${pf}PF COORS`};if(pf>=110)return{c:'bhr',t:`↑${pf}PF HR PARK`};if(pf<=93)return{c:'bpt',t:`↓${pf}PF PITCHER`};return{c:'bav',t:`${pf}PF AVG`};}
 
+// Wind inline display — shown directly on the game title line
+function windInline(wx){
+  if(!wx || wx.d==='dome') return '<span style="font-family:\'Chivo Mono\',monospace;font-size:9px;color:var(--muted);margin-left:2px;letter-spacing:1px;">DOME</span>';
+  const mph = wx.w || 0;
+  if(mph < 3) return '<span style="font-family:\'Chivo Mono\',monospace;font-size:9px;color:var(--muted);margin-left:2px;">CALM</span>';
+  const isOut  = wx.d === 'out';
+  const isIn   = wx.d === 'in';
+  const arrow  = isOut ? '↑' : isIn ? '↓' : '↔';
+  const label  = isOut ? 'OUT' : isIn ? 'IN' : 'CROSS';
+  const color  = isOut ? 'var(--accent)' : isIn ? 'var(--a2)' : 'var(--muted)';
+  const bg     = isOut ? '#fff3e0' : isIn ? '#eaf0ff' : '#f5f5f5';
+  const border = isOut ? '#f0c060'  : isIn ? '#a0b8e0' : 'var(--rule)';
+  return `<span style="font-family:'Chivo Mono',monospace;font-size:9px;font-weight:700;color:${color};background:${bg};border:1px solid ${border};padding:2px 7px;border-radius:1px;margin-left:4px;letter-spacing:.5px;">${arrow}${mph}mph ${label}</span>`;
+}
+
+// High-wind symbol shown when wind will significantly move the ball (≥12mph)
+function windAlert(wx){
+  if(!wx || wx.d==='dome') return '';
+  const mph = wx.w || 0;
+  if(mph >= 20) return `<span title="${mph}mph — major ball-flight impact" style="font-size:15px;margin-left:4px;vertical-align:middle;">💨💨</span>`;
+  if(mph >= 12) return `<span title="${mph}mph — notable wind factor" style="font-size:14px;margin-left:4px;vertical-align:middle;">💨</span>`;
+  return '';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -901,19 +925,21 @@ function render(){
     const aFat=fatFlag(g.ap), hFat=fatFlag(g.hp);
     const umpFavor=ump?ump.favor:0;
     const topPick=getGameTopPick(g);
+    const wInline=windInline(wx), wAlert=windAlert(wx);
     html+=`
     <div class="gb">
       <div class="gbanner" onclick="toggleGame(this)">
         <div>
-          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             <span class="gtitle">${g.aw} @ ${g.hm}</span>
+            ${wInline}
+            ${wAlert}
             <span class="gtime">${g.time}</span>
             <span class="gvenue">${g.venue}</span>
             ${topPick?`<span class="top-pick-badge">⬥ ${topPick.name} ${topPick.score}</span>`:''}
           </div>
           <div class="brow">
             <span class="bdg ${pb.c}">${pb.t}</span>
-            <span class="bdg ${wl.c}">${wl.t}</span>
             <span class="bdg btmp">🌡${wx.t}°F</span>
             ${wx.rh?`<span class="bdg bhumid">💧${wx.rh}%RH</span>`:''}
             ${wx.baro&&wx.baro<1005?`<span class="bdg bpres">↓${wx.baro}hPa</span>`:''}
