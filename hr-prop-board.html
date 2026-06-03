@@ -185,6 +185,7 @@ body{background:var(--paper);color:var(--ink);font-family:'Familjen Grotesk',san
     <div class="sod" id="sfO">+0</div>
     <div class="swarn" id="sfW"></div>
     <button class="scopy" id="scopyBtn" onclick="copySlip()">COPY SLIP</button>
+    <button class="scopy" id="sgamblyBtn" onclick="sendToGambly()" style="background:#7c3aed;margin-top:4px;">⚡ SEND TO GAMBLY</button>
     <button class="sclr" onclick="clearSlip()">CLEAR ALL</button>
   </div>
 </div>
@@ -1043,6 +1044,18 @@ function copySlip(){
   const txt=`DIAMOND HR PARLAY — ${displayDate(currentDate)}\n`+legs.map(l=>`${l.name} (${l.team}) vs ${l.pitcher} | Comp:${l.score}`).join('\n')+`\n\nEst Odds: ${document.getElementById('sfO').textContent}`;
   navigator.clipboard?.writeText(txt);
   const b=document.getElementById('scopyBtn');b.textContent='✓ COPIED';setTimeout(()=>b.textContent='COPY SLIP',2000);
+}
+
+function sendToGambly(){
+  if(!legs.length) return;
+  const playerList = legs.map(l=>`${l.name} to hit a home run`).join(', ');
+  const msg = `I want a parlay for ${playerList} for ${displayDate(currentDate)}. Can you build this slip?`;
+  navigator.clipboard?.writeText(msg).then(()=>{
+    const b = document.getElementById('sgamblyBtn');
+    b.textContent = '✓ COPIED — OPENING GAMBLY';
+    setTimeout(()=>{ b.textContent='⚡ SEND TO GAMBLY'; }, 3000);
+    window.open('https://gambly.com', '_blank');
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
