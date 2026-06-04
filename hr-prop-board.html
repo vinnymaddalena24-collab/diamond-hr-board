@@ -1407,6 +1407,44 @@
       }
     }
 
+    /* ── COLLECTION TABS ── */
+    .coll-nav{display:flex;align-items:center;gap:4px;padding:10px 0;border-bottom:2px solid var(--rule);overflow-x:auto;flex-wrap:nowrap;position:sticky;top:0;background:var(--paper);z-index:100;}
+    .ctab{padding:7px 14px;font-family:'Chivo Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;cursor:pointer;background:transparent;border:1px solid var(--rule);color:var(--muted);border-radius:4px;white-space:nowrap;transition:all .12s;flex-shrink:0;}
+    .ctab:hover{border-color:var(--a2);color:var(--ink);}
+    .ctab.on{background:var(--a2);border-color:var(--a2);color:#fff;}
+    .csrch{margin-left:auto;background:var(--cream);border:1px solid var(--rule);color:var(--ink);padding:6px 10px;font-family:'Chivo Mono',monospace;font-size:9px;border-radius:4px;outline:none;width:130px;flex-shrink:0;}
+    .csrch:focus{border-color:var(--a2);}
+    .csrch::placeholder{color:#484f58;}
+    /* ── GAME CARDS GRID ── */
+    .games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;padding:16px 0 60px;}
+    .game-card{background:var(--cream);border:1px solid var(--rule);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s;}
+    .game-card:hover{border-color:var(--a2);}
+    .game-card.expanded{border-color:var(--a2);box-shadow:0 0 0 1px var(--a2);}
+    .gc-header{padding:13px 14px;}
+    .gc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;}
+    .gc-matchup{font-family:'Chivo Mono',monospace;font-size:15px;font-weight:700;letter-spacing:2px;color:var(--ink);}
+    .gc-meta{font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:.5px;}
+    .gc-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;}
+    .gc-picks{display:flex;gap:8px;flex-wrap:wrap;}
+    /* Mini pick inside game card */
+    .mini-pick{display:flex;align-items:center;gap:7px;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:6px 9px;flex:1;min-width:130px;}
+    .mini-photo{position:relative;width:36px;height:36px;flex-shrink:0;border-radius:50%;overflow:hidden;border:2px solid var(--rule);background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:14px;}
+    .mini-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;}
+    .mini-info{flex:1;min-width:0;}
+    .mini-name{font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .mini-sub{font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);}
+    .mini-score{font-family:'Chivo Mono',monospace;font-size:20px;font-weight:700;line-height:1;flex-shrink:0;}
+    .gc-expand-btn{font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);display:flex;align-items:center;gap:4px;padding:8px 14px;border-top:1px solid var(--rule);letter-spacing:1px;}
+    /* Game detail (expanded) */
+    .gc-detail{border-top:2px solid var(--a2);background:var(--paper);}
+    .gc-park-strip{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--rule);background:var(--cream);}
+    .gc-pitcher-strip{display:flex;gap:8px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--rule);}
+    .gc-table-wrap{overflow-x:auto;}
+
+    @media(max-width:700px){
+      .games-grid{grid-template-columns:1fr;}
+    }
+
     /* ── BASEBALL CARD PHOTO ── */
     .card-photo-wrap {
       position: relative;
@@ -1665,36 +1703,29 @@
 
     <div id="injstrip"></div>
 
-    <!-- FILTERS -->
-    <div class="frow" id="frow">
-      <span class="flbl">TIER</span>
-      <button class="ftag on" data-f="tier" data-v="all">All</button>
-      <button class="ftag" data-f="tier" data-v="S">S</button>
-      <button class="ftag" data-f="tier" data-v="A">A</button>
-      <button class="ftag" data-f="tier" data-v="B">B+</button>
-      <div class="fdiv"></div>
-      <span class="flbl">MATCH</span>
-      <button class="ftag on" data-f="match" data-v="all">All</button>
-      <button class="ftag" data-f="match" data-v="fire">🔥 Elite</button>
-      <button class="ftag" data-f="match" data-v="good">✅ Good</button>
-      <div class="fdiv"></div>
-      <span class="flbl">HAND</span>
-      <button class="ftag on" data-f="hand" data-v="all">All</button>
-      <button class="ftag" data-f="hand" data-v="adv">Platoon Adv</button>
-      <div class="fdiv"></div>
-      <span class="flbl">FLAGS</span>
-      <button class="ftag on" data-f="flag" data-v="all">All</button>
-      <button class="ftag" data-f="flag" data-v="lineMoved">📈 Line</button>
-      <button class="ftag" data-f="flag" data-v="noFatigue">No Fatigue</button>
-      <div class="fdiv"></div>
-      <select class="fsel" id="sortSel">
-        <option value="score">Composite ↓</option>
-        <option value="hrpct">HR% ↓</option>
-        <option value="barrel">Barrel% ↓</option>
-        <option value="hardHit">Hard Hit% ↓</option>
-        <option value="ops">OPS ↓</option>
-      </select>
-      <input class="fsrch" id="fsrch" type="text" placeholder="Search...">
+    <!-- COLLECTION TABS -->
+    <div class="coll-nav" id="collNav">
+      <button class="ctab on" data-tab="all">ALL GAMES</button>
+      <button class="ctab" data-tab="stars">⭐ SUPER STARS</button>
+      <button class="ctab" data-tab="good">✅ GOOD PICKS</button>
+      <button class="ctab" data-tab="hot">🔥 HOT STREAKS</button>
+      <button class="ctab" data-tab="platoon">L/R PLATOON</button>
+      <button class="ctab" data-tab="search">🔍 PLAYER LOOKUP</button>
+      <input class="csrch" id="csrch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
+    </div>
+
+    <!-- SEARCH PANEL (shown when PLAYER LOOKUP tab active) -->
+    <div id="searchPanel" style="display:none;padding:14px 0;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <input id="playerSearch" type="text" placeholder="Type any MLB player name..."
+          style="flex:1;background:var(--cream);border:1px solid var(--rule);color:var(--ink);padding:10px 14px;font-family:'Chivo Mono',monospace;font-size:11px;border-radius:4px;outline:none;"
+          oninput="debouncedPlayerSearch(this.value)">
+        <span class="status loading" id="searchSt" style="display:none">...</span>
+      </div>
+      <div style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:12px;">
+        Base score uses home park + neutral pitcher. Actual game score varies by matchup, park, weather.
+      </div>
+      <div id="playerResults"></div>
     </div>
 
     <div id="top5wrap"></div>
@@ -1884,7 +1915,8 @@
     // ═══════════════════════════════════════════════════════════════════════════
     // STATE
     // ═══════════════════════════════════════════════════════════════════════════
-    let tierF = 'all', matchF = 'all', handF = 'all', flagF = 'all', sortBy = 'score', searchQ = '';
+    let activeTab = 'all', searchQ = '';
+    let expandedGame = null;
     let legs = [];
     let activeGames = [], activeWX = {}, activeUMP = {};
     let serverTop5 = [], serverInjuries = [];
@@ -2261,103 +2293,140 @@
       document.getElementById('top5wrap').innerHTML = html;
     }
 
+    // ── Collection filter applied to a game's player list ─────────────────────
+    function getFilteredPlayers(g) {
+      let pl = buildGamePlayers(g).sort((a,b) => b.score - a.score);
+      switch(activeTab) {
+        case 'stars':   pl = pl.filter(p => p.score >= 80); break;
+        case 'good':    pl = pl.filter(p => p.score >= 65); break;
+        case 'hot':     pl = pl.filter(p => p.hotStreak); break;
+        case 'platoon': pl = pl.filter(p => p.platoon >= 8); break;
+      }
+      if(searchQ){
+        const sq = searchQ.toLowerCase();
+        pl = pl.filter(p => p.name.toLowerCase().includes(sq) || p.team.toLowerCase().includes(sq));
+      }
+      return pl;
+    }
+
+    // ── Mini pick card shown on game card ──────────────────────────────────────
+    function renderMiniPick(p) {
+      const tc = p.tier==='S'?'#3fb950':p.tier==='A'?'#e3b341':p.tier==='B'?'#c87000':'#58a6ff';
+      const sc = p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--a2)';
+      const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg` : '';
+      const badge = p.hotStreak ? '🔥' : p.confirmed && p.lineupPos > 0 ? `#${p.lineupPos}` : '';
+      return `<div class="mini-pick">
+        <div class="mini-photo" style="border-color:${tc}">⚾
+          ${photoUrl?`<img src="${photoUrl}" alt="" onerror="this.style.display='none'">`:''}</div>
+        <div class="mini-info">
+          <div class="mini-name">${p.name.split(' ').pop()}</div>
+          <div class="mini-sub">${p.team} · ${p.pos} ${badge}</div>
+        </div>
+        <div class="mini-score" style="color:${sc}">${p.score}</div>
+      </div>`;
+    }
+
+    // ── Full game detail (shown when card is expanded) ─────────────────────────
+    function renderGameDetail(g, players) {
+      const wx = activeWX[g.id] || {t:72,w:5,d:'cross',rh:55,baro:1013,n:''};
+      const sp0 = g.serverPlayers && g.serverPlayers[0];
+      const gameTotal = g.gameTotal || (sp0 ? sp0.gameTotal||0 : 0);
+      const hpUmp = sp0 ? sp0.hpUmp||'' : '';
+      const wInline = windInline(wx), wAlert = windAlert(wx);
+      const pb = pfBadge(g.pf);
+      return `<div class="gc-detail" onclick="event.stopPropagation()">
+        <div class="gc-park-strip">
+          <span class="bdg ${pb.c}">${pb.t}</span>
+          <span class="bdg btmp">🌡 ${wx.t}°F</span>
+          ${wInline}${wAlert}
+          ${gameTotal?`<span class="bdg" style="background:${gameTotal>=9.5?'#0d2d1a':'#2d2200'};color:${gameTotal>=9.5?'var(--green)':'var(--gold)'};border:1px solid ${gameTotal>=9.5?'#1a5a34':'#5a4400'}">O/U ${gameTotal}</span>`:''}
+          ${hpUmp?`<span class="bdg" style="background:var(--cream);color:var(--muted);border:1px solid var(--rule)">⚖ ${hpUmp.split(' ').slice(-1)[0]}</span>`:''}
+          ${g._fromAPI?`<span class="bdg" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">● LIVE</span>`:''}
+          <span style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-left:auto">${wx.n}</span>
+        </div>
+        <div class="gc-pitcher-strip">
+          <span class="${pClass(g.ap)} pl">${g.aw}: ${g.ap.n} · ${g.ap.h}HP · ${g.ap.era} ERA</span>
+          <span class="${pClass(g.hp)} pl">${g.hm}: ${g.hp.n} · ${g.hp.h}HP · ${g.hp.era} ERA</span>
+        </div>
+        <div class="gc-table-wrap">
+          <table class="pt">
+            <thead><tr>
+              <th style="width:62px"></th>
+              <th>PLAYER</th>
+              <th>MATCHUP</th>
+              <th class="r">HR</th>
+              <th class="r">BARREL</th>
+              <th class="r">SCORE</th>
+            </tr></thead>
+            <tbody>${players.map(p => row(p)).join('')}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }
+
+    // ── Game card (compact, shown in grid) ─────────────────────────────────────
+    function renderGameCard(g) {
+      const players = getFilteredPlayers(g);
+      if (!players.length && activeTab !== 'all') return '';
+      const allPlayers = buildGamePlayers(g).sort((a,b) => b.score - a.score);
+      const topPicks = allPlayers.slice(0, 2);
+      const isExpanded = expandedGame === g.id;
+      const wl = wlabel(activeWX[g.id] || {});
+      return `<div class="game-card${isExpanded?' expanded':''}" id="gc-${g.id}" onclick="toggleGameCard('${g.id}')">
+        <div class="gc-header">
+          <div class="gc-top">
+            <div>
+              <div class="gc-matchup">${g.aw} @ ${g.hm}</div>
+              <div class="gc-meta">${g.time} · ${g.venue}</div>
+            </div>
+            <span class="bdg ${wl.c}" style="align-self:flex-start">${wl.t}</span>
+          </div>
+          <div class="gc-picks">
+            ${topPicks.map(p => renderMiniPick(p)).join('')}
+          </div>
+        </div>
+        <div class="gc-expand-btn">
+          <span>${isExpanded?'▲ HIDE':'▼ SEE ALL'} ${allPlayers.length} PLAYERS</span>
+        </div>
+        ${isExpanded ? renderGameDetail(g, players.length ? players : allPlayers) : ''}
+      </div>`;
+    }
+
+    // ── Main render ────────────────────────────────────────────────────────────
     function render() {
       renderInjuryStrip();
       renderTop5();
+
+      // Toggle search panel
+      const isSearch = activeTab === 'search';
+      document.getElementById('searchPanel').style.display = isSearch ? '' : 'none';
+      document.getElementById('top5wrap').style.display = isSearch ? 'none' : '';
+
+      if (isSearch) {
+        document.getElementById('board').innerHTML = '';
+        return;
+      }
+
       if (!activeGames.length) {
         document.getElementById('board').innerHTML = '<div class="empty-msg">NO GAMES FOUND FOR THIS DATE</div>';
         return;
       }
-      const sq = searchQ.toLowerCase();
-      let html = '';
-      for (const g of activeGames) {
-        const wx = activeWX[g.id] || { t: 72, w: 5, d: 'cross', rh: 55, baro: 1013, n: '' };
-        const ump = activeUMP[g.id] || null;
-        let pl = buildGamePlayers(g).filter(p => {
-          if (tierF !== 'all' && p.tier !== tierF) return false;
-          if (matchF === 'fire' && p.score < 80) return false;
-          if (matchF === 'good' && p.score < 65) return false;
-          if (handF === 'adv' && p.platoon < 5) return false;
-          if (flagF === 'lineMoved' && !p.lineMoved) return false;
-          if (flagF === 'noFatigue' && p.fat) return false;
-          if (sq && !p.name.toLowerCase().includes(sq) && !p.team.toLowerCase().includes(sq) &&
-            !g.ap.n.toLowerCase().includes(sq) && !g.hp.n.toLowerCase().includes(sq)) return false;
-          return true;
-        });
-        if (sortBy === 'hrpct') pl.sort((a, b) => b.hrPct - a.hrPct);
-        else if (sortBy === 'barrel') pl.sort((a, b) => b.barrel - a.barrel);
-        else if (sortBy === 'hardHit') pl.sort((a, b) => b.hardHit - a.hardHit);
-        else if (sortBy === 'ops') pl.sort((a, b) => b.OPS - a.OPS);
-        else pl.sort((a, b) => b.score - a.score);
-        if (!pl.length) continue;
-        const wl = wlabel(wx), pb = pfBadge(g.pf);
-        const aFat = fatFlag(g.ap), hFat = fatFlag(g.hp);
-        const umpFavor = ump ? ump.favor : 0;
-        const topPick = getGameTopPick(g);
-        const wInline = windInline(wx), wAlert = windAlert(wx);
-        // Pull ump + bullpen from first server player if available
-        const sp0       = g.serverPlayers && g.serverPlayers[0];
-        const hpUmp     = sp0 ? sp0.hpUmp    : '';
-        const umpScore  = sp0 ? (sp0.umpScore||0) : 0;
-        const gameTotal = g.gameTotal || (sp0 ? (sp0.gameTotal||0) : 0);
-        const totalBadge = gameTotal
-          ? `<span class="bdg" style="background:${gameTotal>=9.5?'#0d2d1a':gameTotal<=7?'#2d1515':'#2d2200'};color:${gameTotal>=9.5?'var(--green)':gameTotal<=7?'#f0654a':'var(--gold)'};border:1px solid ${gameTotal>=9.5?'#1a5a34':gameTotal<=7?'#5a2020':'#5a4400'}">O/U ${gameTotal}</span>`
-          : '';
-        const umpBadge = hpUmp
-          ? `<span class="bdg" style="background:${umpScore > 0.5 ? '#0d2d1a' : umpScore < -0.5 ? '#2d1515' : 'var(--cream)'};color:${umpScore > 0.5 ? 'var(--green)' : umpScore < -0.5 ? '#f0654a' : 'var(--muted)'};border:1px solid ${umpScore > 0.5 ? '#1a5a34' : umpScore < -0.5 ? '#5a2020' : 'var(--rule)'}">⚖ ${hpUmp.split(' ').slice(-1)[0]}</span>`
-          : '';
-        const awBull = sp0 ? (sp0.oppBullpenEra || 4.50) : 4.50;
-        const bullBadge = awBull >= 5.0
-          ? `<span class="bdg bhr">🔥 BULL ${awBull} ERA</span>`
-          : awBull >= 4.5 ? `<span class="bdg bav">BULL ${awBull}</span>` : '';
-        html += `
-    <div class="gb">
-      <div class="gbanner" onclick="toggleGame(this)">
-        <div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span class="gtitle">${g.aw} @ ${g.hm}</span>
-            ${wInline}
-            ${wAlert}
-            <span class="gtime">${g.time}</span>
-            <span class="gvenue">${g.venue}</span>
-            ${topPick ? `<span class="top-pick-badge">⬥ ${topPick.name} ${topPick.score}</span>` : ''}
-          </div>
-          <div class="brow">
-            <span class="bdg ${pb.c}">${pb.t}</span>
-            <span class="bdg btmp">🌡${wx.t}°F</span>
-            ${wx.rh ? `<span class="bdg bhumid">💧${wx.rh}%RH</span>` : ''}
-            ${wx.baro && wx.baro < 1005 ? `<span class="bdg bpres">↓${wx.baro}hPa</span>` : ''}
-            ${totalBadge}
-            ${umpBadge}
-            ${bullBadge}
-            ${g._fromAPI ? `<span class="bdg" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">● LIVE</span>` : ''}
-          </div>
-        </div>
-        <span class="gct">${pl.length} players</span><span class="gchv">›</span>
-      </div>
-      <div class="gbody">
-        <div class="pline-row">
-          <span class="${pClass(g.ap)} pl">${g.aw}: ${g.ap.n} ${g.ap.h}HP ${g.ap.era}ERA ${g.ap.fb}%FB</span>
-          <span class="${pClass(g.hp)} pl">${g.hm}: ${g.hp.n} ${g.hp.h}HP ${g.hp.era}ERA ${g.hp.fb}%FB</span>
-          ${aFat ? `<span class="flag flag-fat">⚡ ${g.aw} FATIGUE</span>` : ''}
-          ${hFat ? `<span class="flag flag-fat">⚡ ${g.hm} FATIGUE</span>` : ''}
-          <span class="pump">${wx.n}</span>
-        </div>
-        <table class="pt">
-          <thead><tr>
-            <th style="width:62px"></th>
-            <th>PLAYER</th>
-            <th>MATCHUP</th>
-            <th class="r">HR</th>
-            <th class="r">BARREL</th>
-            <th class="r">SCORE</th>
-          </tr></thead>
-          <tbody>${pl.map(p => row(p)).join('')}</tbody>
-        </table>
-      </div>
-    </div>`;
+
+      let html = '<div class="games-grid">';
+      for (const g of activeGames) html += renderGameCard(g);
+      html += '</div>';
+      document.getElementById('board').innerHTML = html || '<div class="empty-msg">NO GAMES MATCH THIS COLLECTION</div>';
+    }
+
+    function toggleGameCard(id) {
+      expandedGame = expandedGame === id ? null : id;
+      render();
+      if (expandedGame) {
+        setTimeout(() => {
+          const el = document.getElementById(`gc-${id}`);
+          if (el) el.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }, 50);
       }
-      document.getElementById('board').innerHTML = html || `<div class="empty-msg">NO PLAYERS MATCH CURRENT FILTERS</div>`;
     }
 
     function row(p) {
@@ -2483,18 +2552,16 @@
     // ═══════════════════════════════════════════════════════════════════════════
     // EVENTS
     // ═══════════════════════════════════════════════════════════════════════════
-    function toggleGame(hdr) { hdr.classList.toggle('closed'); hdr.nextElementSibling.classList.toggle('hidden'); }
     function toggleAcc(id, hdr) { document.getElementById(id).classList.toggle('open'); hdr.classList.toggle('open'); }
-    document.getElementById('frow').addEventListener('click', e => {
-      const b = e.target.closest('.ftag'); if (!b) return;
-      const f = b.dataset.f, v = b.dataset.v;
-      if (f === 'tier') tierF = v; else if (f === 'match') matchF = v; else if (f === 'hand') handF = v; else flagF = v;
-      document.querySelectorAll(`.ftag[data-f="${f}"]`).forEach(x => x.classList.remove('on', 'on-r', 'on-g'));
-      b.classList.add(f === 'match' && v === 'fire' ? 'on-r' : f === 'flag' && v !== 'all' ? 'on-g' : 'on');
+    // Collection tab clicks
+    document.getElementById('collNav').addEventListener('click', e => {
+      const b = e.target.closest('.ctab'); if (!b) return;
+      activeTab = b.dataset.tab;
+      document.querySelectorAll('.ctab').forEach(t => t.classList.remove('on'));
+      b.classList.add('on');
+      expandedGame = null;
       render();
     });
-    document.getElementById('sortSel').addEventListener('change', e => { sortBy = e.target.value; render(); });
-    document.getElementById('fsrch').addEventListener('input', e => { searchQ = e.target.value.trim(); render(); });
 
     // ═══════════════════════════════════════════════════════════════════════════
     // PLAYER LOOKUP — search any MLB hitter via /api/search
