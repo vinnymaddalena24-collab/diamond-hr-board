@@ -24,7 +24,8 @@ from urllib.parse import urlparse, parse_qs
 # ── CONFIG ───────────────────────────────────────────────────────────────────
 PORT = int(os.environ.get("PORT", 8765))
 HOST = os.environ.get("HOST", "0.0.0.0")
-CACHE_TTL = 900          # 15 minutes
+CACHE_TTL    = 900   # 15 minutes — general data
+ROSTER_TTL   = 600   # 10 minutes — rosters + injuries refresh faster for trade/IL accuracy
 USER_AGENT = "DiamondHRBoard/1.0"
 
 # Stadium coordinates for weather (home team → lat/lng)
@@ -119,10 +120,11 @@ TEAM_MAP = {
 _cache = {}
 _cache_lock = threading.Lock()
 
-def cache_get(key):
+def cache_get(key, ttl=None):
     with _cache_lock:
         entry = _cache.get(key)
-        if entry and time.time() - entry["ts"] < CACHE_TTL:
+        effective_ttl = ttl if ttl is not None else CACHE_TTL
+        if entry and time.time() - entry["ts"] < effective_ttl:
             return entry["data"]
     return None
 
@@ -254,41 +256,48 @@ def fetch_pitcher_stats(pitcher_id):
         return {}
 
 def fetch_injuries():
-    """Fetch current IL from MLB transactions API"""
-    cached = cache_get("injuries")
+    """
+    Fetch current IL from two sources and merge:
+    1. 40-man roster status flags (most accurate — reflects today's IL)
+    2. Transactions endpoint (catches recent placements not yet in roster status)
+    """
+    cached = cache_get("injuries", ttl=ROSTER_TTL)
     if cached: return cached
 
-    url = "https://statsapi.mlb.com/api/v1/transactions?sportId=1&limit=500&transactionType=IL"
+    injured = set()
+    IL_CODES = {"IL10","IL15","IL60","DL","10D","15D","60D",
+                "BEREAVEMENT","FAMILY_MEDICAL","SUSPENDED","DES"}
+
+    # ── Primary: 40-man roster status ────────────────────────────────────────
     try:
-        data = fetch(url)
-        injured = set()
-        for t in data.get("transactions", []):
+        url = ("https://statsapi.mlb.com/api/v1/teams"
+               "?sportId=1&hydrate=roster(rosterType=40Man)")
+        data = fetch(url, timeout=20)
+        for team in data.get("teams", []):
+            for player in team.get("roster", []):
+                code = (player.get("status", {}).get("code") or "").upper()
+                if code in IL_CODES or code.startswith("IL") or code.startswith("DL"):
+                    name = player.get("person", {}).get("fullName", "")
+                    if name:
+                        injured.add(name)
+    except Exception as e:
+        print(f"[injuries-40man] Error: {e}")
+
+    # ── Secondary: transactions endpoint (recent placements may lag roster) ──
+    try:
+        tx_url = "https://statsapi.mlb.com/api/v1/transactions?sportId=1&limit=500&transactionType=IL"
+        tx = fetch(tx_url)
+        for t in tx.get("transactions", []):
             if t.get("typeCode") in ("IL10","IL15","IL60","DL10","DL15","DL60"):
                 pname = t.get("player", {}).get("fullName")
-                # Only add if no toDate (still on IL)
-                if pname and not t.get("toDate"):
+                if pname and not t.get("toDate"):  # no activation date = still on IL
                     injured.add(pname)
-        # Also pull from active roster IL
-        il_url = "https://statsapi.mlb.com/api/v1/teams?sportId=1&hydrate=roster(rosterType=fullRoster)"
-        try:
-            team_data = fetch(il_url)
-            for team in team_data.get("teams", []):
-                for player in team.get("roster", []):
-                    if player.get("status", {}).get("code") in ("IL10","IL15","IL60","DL"):
-                        injured.add(player["person"]["fullName"])
-        except:
-            pass
-        cache_set("injuries", injured)
-        return injured
     except Exception as e:
-        print(f"[injuries] Error: {e}")
-        # Return known injuries as fallback
-        return {
-            "Elly De La Cruz","Francisco Lindor","Luis Robert Jr.","Tarik Skubal",
-            "Gleyber Torres","Javier Báez","Corey Seager","Wyatt Langford",
-            "Ronald Acuña Jr.","Ryan Jeffers","Zach Neto","Bailey Ober",
-            "Sean Murphy","Garrett Crochet"
-        }
+        print(f"[injuries-tx] Error: {e}")
+
+    print(f"[injuries] {len(injured)} players on IL")
+    cache_set("injuries", injured)
+    return injured
 
 def fetch_batting_stats_savant():
     """
@@ -410,32 +419,60 @@ def fetch_weather(home_team, game_hour_et):
                 "note": "Weather data unavailable"}
 
 def fetch_active_rosters():
-    """Fetch all active MLB players (40-man roster) — names + team + basic stats"""
-    cached = cache_get("rosters")
+    """
+    Fetch all active MLB players from two sources:
+    1. sports/1/players — comprehensive, has batSide, but can lag on trades
+    2. 40-man roster per team — authoritative for current team post-trade
+    Merges both: batSide from source 1, current team overridden by source 2.
+    """
+    cached = cache_get("rosters", ttl=ROSTER_TTL)
     if cached: return cached
 
-    url = ("https://statsapi.mlb.com/api/v1/sports/1/players"
-           "?season=2026&gameType=R")
+    players = {}
+
+    # ── Source 1: All players with batSide ────────────────────────────────────
     try:
+        url = ("https://statsapi.mlb.com/api/v1/sports/1/players"
+               "?season=2026&gameType=R")
         data = fetch(url)
-        players = {}
         for p in data.get("people", []):
-            pid = p.get("id")
-            name = p.get("fullName", "")
+            pid       = p.get("id")
+            name      = p.get("fullName", "")
             team_abbr = p.get("currentTeam", {}).get("abbreviation", "")
-            team = TEAM_MAP.get(team_abbr, team_abbr)
-            pos = p.get("primaryPosition", {}).get("abbreviation", "")
-            bats = p.get("batSide", {}).get("code", "R")
-            players[name] = {
-                "id": pid, "team": team, "pos": pos,
-                "bats": bats, "name": name
-            }
-        cache_set("rosters", players)
-        print(f"[rosters] Loaded {len(players)} players")
-        return players
+            team      = TEAM_MAP.get(team_abbr, team_abbr)
+            pos       = p.get("primaryPosition", {}).get("abbreviation", "")
+            bats      = p.get("batSide", {}).get("code", "R")
+            if name:
+                players[name] = {"id": pid, "team": team, "pos": pos,
+                                 "bats": bats, "name": name}
+        print(f"[rosters-primary] {len(players)} players")
     except Exception as e:
-        print(f"[rosters] Error: {e}")
-        return {}
+        print(f"[rosters-primary] Error: {e}")
+
+    # ── Source 2: 40-man roster — authoritative current-team post-trade ───────
+    try:
+        url40 = ("https://statsapi.mlb.com/api/v1/teams"
+                 "?sportId=1&hydrate=roster(rosterType=40Man)")
+        data40 = fetch(url40, timeout=20)
+        for team_obj in data40.get("teams", []):
+            abbr = team_obj.get("abbreviation", "")
+            team = TEAM_MAP.get(abbr, abbr)
+            for player in team_obj.get("roster", []):
+                name = player.get("person", {}).get("fullName", "")
+                pid  = player.get("person", {}).get("id")
+                pos  = player.get("position", {}).get("abbreviation", "")
+                if not name: continue
+                if name in players:
+                    players[name]["team"] = team  # override with current team
+                else:
+                    players[name] = {"id": pid, "team": team, "pos": pos,
+                                     "bats": "R", "name": name}
+        print(f"[rosters-40man] merged → {len(players)} total")
+    except Exception as e:
+        print(f"[rosters-40man] Error: {e}")
+
+    cache_set("rosters", players)
+    return players
 
 def fetch_batting_season_stats():
     """Fetch season batting stats (HR, AVG, OPS, SLG) from MLB Stats API"""
@@ -444,7 +481,7 @@ def fetch_batting_season_stats():
 
     url = ("https://statsapi.mlb.com/api/v1/stats"
            "?stats=season&group=hitting&season=2026&sportId=1"
-           "&limit=500&sortStat=homeRuns&order=desc")
+           "&limit=700&sortStat=homeRuns&order=desc")
     try:
         data = fetch(url)
         result = {}
