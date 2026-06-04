@@ -26,9 +26,22 @@ PORT = int(os.environ.get("PORT", 8765))
 HOST = os.environ.get("HOST", "0.0.0.0")
 CACHE_TTL    = 900   # 15 minutes — general data
 ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
-SPLITS_TTL   = 3600  # 1 hour — home/away + monthly splits (rarely change intraday)
+SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 API_TIMEOUT  = 10    # seconds — hard cap on all external API calls
-USER_AGENT = "DiamondHRBoard/1.0"
+USER_AGENT   = "DiamondHRBoard/1.0"
+
+# Optional: set ODDS_API_KEY env var for game totals (free at the-odds-api.com)
+ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
+
+# Full MLB team name → our abbreviation (for Odds API matching)
+ODDS_TEAM_MAP = {
+    "yankees":"NYY","mets":"NYM","red sox":"BOS","dodgers":"LAD","angels":"LAA",
+    "astros":"HOU","braves":"ATL","cubs":"CHC","white sox":"CWS","guardians":"CLE",
+    "tigers":"DET","royals":"KC","twins":"MIN","padres":"SD","giants":"SF",
+    "cardinals":"STL","brewers":"MIL","reds":"CIN","pirates":"PIT","phillies":"PHI",
+    "nationals":"WSH","marlins":"MIA","orioles":"BAL","rays":"TBR","blue jays":"TOR",
+    "rangers":"TEX","mariners":"SEA","athletics":"ATH","rockies":"COL",
+}
 
 # Stadium coordinates for weather (home team → lat/lng)
 # Stadium coordinates for weather (home team → lat/lng)
@@ -731,14 +744,135 @@ def fetch_pitcher_savant_allowed():
         return {}
 
 def hr_probability(score):
-    """Map 0–99 composite score to estimated HR probability % per game.
-    Calibrated: score 35≈4%, 50≈8%, 65≈14%, 80≈21%, 90≈27%"""
-    import math
+    """Map 0–99 composite score to estimated HR probability % per game."""
     prob = 1.5 + (score / 99) ** 1.75 * 29.5
     return round(max(1.0, min(32.0, prob)), 1)
 
-def ump_zone_adj(ump_name):
+def ump_zone_adj(ump_name, live_ump_scores=None):
+    """Zone adjustment: live UmpScorecards score first, fallback to hardcoded dict."""
+    if live_ump_scores and ump_name in live_ump_scores:
+        return float(live_ump_scores[ump_name])
     return UMP_ZONES.get(ump_name, 0.0)
+
+# ── LIVE FREE API INTEGRATIONS ────────────────────────────────────────────────
+
+def fetch_ump_zone_live(date_str):
+    """Live umpire zone scores from UmpScorecards.com"""
+    cached = cache_get(f"ump_live_{date_str}")
+    if cached: return cached
+    result = {}
+    for url in [
+        f"https://umpscorecards.com/api/games/?date={date_str}",
+        "https://umpscorecards.com/api/umpires/",
+    ]:
+        try:
+            data = fetch(url)
+            items = data if isinstance(data, list) else \
+                    data.get("games", data.get("umpires", data.get("data", [])))
+            for item in items:
+                name  = (item.get("hp_umpire") or item.get("umpire") or
+                         item.get("homeplate_umpire") or item.get("name") or "")
+                favor = (item.get("favor") or item.get("zone_favor") or
+                         item.get("run_impact") or item.get("favor_score") or 0)
+                if name:
+                    result[name] = float(favor)
+            if result: break
+        except Exception as e:
+            print(f"[umpscorecards] {url}: {e}")
+    if result:
+        cache_set(f"ump_live_{date_str}", result)
+        print(f"[umpscorecards] {len(result)} ump scores")
+    return result
+
+def fetch_prizepicks_mlb():
+    """PrizePicks MLB HR prop lines — displayed on player cards."""
+    cached = cache_get("prizepicks", ttl=1800)
+    if cached: return cached
+    url = ("https://api.prizepicks.com/projections"
+           "?league_id=2&per_page=250&single_stat=true&game_mode=pickem")
+    try:
+        req = Request(url, headers={
+            "User-Agent": USER_AGENT,
+            "Accept":     "application/json",
+            "Referer":    "https://app.prizepicks.com/"
+        })
+        with urlopen(req, timeout=API_TIMEOUT) as r:
+            data = json.loads(r.read().decode())
+        result = {}
+        for proj in data.get("data", []):
+            attrs     = proj.get("attributes", {})
+            stat_type = attrs.get("stat_type", "")
+            if stat_type in ("Home Runs", "HR", "Home Runs (SGP)"):
+                name = (attrs.get("name") or attrs.get("player_name") or "").strip()
+                line = attrs.get("line_score")
+                if name and line is not None:
+                    result[name] = {"line": float(line), "type": attrs.get("odds_type", "")}
+        cache_set("prizepicks", result)
+        print(f"[prizepicks] {len(result)} HR props")
+        return result
+    except Exception as e:
+        print(f"[prizepicks] Error: {e}")
+        return {}
+
+def fetch_sprint_speed():
+    """Sprint speed from Baseball Savant — displayed in player cards."""
+    cached = cache_get("sprint_speed", ttl=SPLITS_TTL)
+    if cached: return cached
+    url = ("https://baseballsavant.mlb.com/leaderboard/sprint_speed"
+           "?min_competitive=50&player_type=batter&year=2026&csv=true")
+    try:
+        req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/csv"})
+        with urlopen(req, timeout=API_TIMEOUT) as r:
+            raw = r.read().decode("utf-8")
+        lines = [l for l in raw.strip().split("\n") if l]
+        if len(lines) < 2: return {}
+        headers = lines[0].split(",")
+        result  = {}
+        for line in lines[1:]:
+            cols = line.split(",")
+            if len(cols) < len(headers): continue
+            row  = dict(zip(headers, cols))
+            name = row.get("player_name", "").strip()
+            if not name: continue
+            try:
+                result[name] = round(float(row.get("sprint_speed", 0) or 0), 1)
+            except: continue
+        cache_set("sprint_speed", result)
+        print(f"[sprint_speed] {len(result)} players")
+        return result
+    except Exception as e:
+        print(f"[sprint_speed] Error: {e}")
+        return {}
+
+def fetch_game_totals(date_str):
+    """O/U game totals from The Odds API — run environment signal.
+    Requires ODDS_API_KEY env var (free at the-odds-api.com, 500 req/mo)."""
+    if not ODDS_API_KEY: return {}
+    cached = cache_get(f"totals_{date_str}")
+    if cached: return cached
+    url = (f"https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
+           f"?apiKey={ODDS_API_KEY}&regions=us&markets=totals&dateFormat=iso")
+    try:
+        data = fetch(url)
+        result = {}
+        for game in data:
+            away = game.get("away_team", "").lower()
+            home = game.get("home_team", "").lower()
+            away_abbr = next((v for k, v in ODDS_TEAM_MAP.items() if k in away), None)
+            home_abbr = next((v for k, v in ODDS_TEAM_MAP.items() if k in home), None)
+            if not (away_abbr and home_abbr): continue
+            for bm in game.get("bookmakers", [])[:2]:
+                for market in bm.get("markets", []):
+                    if market.get("key") == "totals":
+                        for outcome in market.get("outcomes", []):
+                            if outcome.get("name") == "Over":
+                                result[f"{away_abbr}_{home_abbr}"] = float(outcome.get("point", 8.5))
+        cache_set(f"totals_{date_str}", result)
+        print(f"[odds] {len(result)} game totals")
+        return result
+    except Exception as e:
+        print(f"[odds] Error: {e}")
+        return {}
 
 # ── SCORING ENGINE ────────────────────────────────────────────────────────────
 def wind_adj(wx):
@@ -791,11 +925,21 @@ def pull_adj(bats, home_team):
 def lineup_adj(pos):
     return LINEUP_BONUS.get(pos, 0)
 
+def game_total_adj(total):
+    """Run environment from O/U total: high-total games = more HRs expected."""
+    if not total: return 0
+    if total >= 10.0: return 3
+    if total >=  9.0: return 2
+    if total >=  8.0: return 1
+    if total <=  6.5: return -2
+    if total <=  7.5: return -1
+    return 0
+
 def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    recent_stats=None, pitcher_log=None, lineup_pos=0, home_team="",
                    home_away_splits=None, is_home=False,
                    monthly_stats=None, bullpen_era=4.50,
-                   pitcher_sav=None, ump_score=0.0):
+                   pitcher_sav=None, ump_score=0.0, game_total=0.0):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -887,6 +1031,9 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     # ── 10. Lineup position ───────────────────────────────────────────────────
     s += lineup_adj(lineup_pos)
 
+    # ── 11. Run environment (game O/U total) ──────────────────────────────────
+    s += game_total_adj(game_total)
+
     return max(0, min(99, round(s)))
 
 def get_tier(score):
@@ -930,14 +1077,19 @@ def build_daily_data(date_str):
         f_batting  = ex.submit(fetch_batting_season_stats)
         f_recent   = ex.submit(fetch_recent_batting_stats, 15)
         f_savant   = ex.submit(fetch_batting_stats_savant)
-        f_40man    = ex.submit(fetch_40man_roster)   # warm shared cache
+        f_40man    = ex.submit(fetch_40man_roster)
         f_rosters  = ex.submit(fetch_active_rosters)
         f_injuries = ex.submit(fetch_injuries)
-        # Enrichment data (longer TTL, fail gracefully)
+        # Enrichment (longer TTL, fail gracefully)
         f_homeaway = ex.submit(fetch_home_away_splits)
         f_monthly  = ex.submit(fetch_monthly_batting)
         f_bullpen  = ex.submit(fetch_team_bullpen_era)
         f_psav     = ex.submit(fetch_pitcher_savant_allowed)
+        # New free integrations
+        f_ump_live = ex.submit(fetch_ump_zone_live, date_str)
+        f_pp       = ex.submit(fetch_prizepicks_mlb)
+        f_sprint   = ex.submit(fetch_sprint_speed)
+        f_totals   = ex.submit(fetch_game_totals, date_str)
         # All pitcher stats + logs in parallel
         f_p_stats  = {pid: ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
         f_p_logs   = {pid: ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
@@ -960,6 +1112,10 @@ def build_daily_data(date_str):
     monthly         = safe(f_monthly)
     bullpen         = safe(f_bullpen)
     pitcher_sav_map = safe(f_psav)
+    ump_live        = safe(f_ump_live)
+    prizepicks      = safe(f_pp)
+    sprint_speed    = safe(f_sprint)
+    game_totals     = safe(f_totals)
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
     pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
     weather_map     = {gid: safe(f) for gid, f in f_wx.items()}
@@ -971,7 +1127,9 @@ def build_daily_data(date_str):
             "dome": False, "temp": 72, "wind_mph": 5, "wind_dir": 180,
             "direction": "cross", "humidity": 55, "pressure": 1013, "note": ""})
 
-        ump_score = ump_zone_adj(g.get("hpUmp", ""))
+        ump_score  = ump_zone_adj(g.get("hpUmp", ""), ump_live)
+        total_key  = f"{g['away']}_{g['home']}"
+        game_total = game_totals.get(total_key, 0.0)
         for side in ["awayPitcher", "homePitcher"]:
             pid   = g[side].get("id")
             name  = g[side].get("name", "")
@@ -1020,6 +1178,7 @@ def build_daily_data(date_str):
             lineup_pos   = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
             bat_stat["bats"] = roster_info.get("bats", "R")
+            pp_data = prizepicks.get(name, {})
             score = calc_composite(
                 bat_stat, sav, opp_pitcher, pf, wx,
                 recent_stats=recent_stat,
@@ -1032,6 +1191,7 @@ def build_daily_data(date_str):
                 bullpen_era=opp_bullpen,
                 pitcher_sav=pitcher_sav,
                 ump_score=ump_score,
+                game_total=game_total,
             )
             tier = get_tier(score)
 
@@ -1077,6 +1237,10 @@ def build_daily_data(date_str):
                 "oppBullpenEra":    opp_bullpen,
                 "hpUmp":            g.get("hpUmp", ""),
                 "umpScore":         ump_score,
+                "gameTotal":        game_total,
+                "ppLine":           pp_data.get("line", None),
+                "ppType":           pp_data.get("type", ""),
+                "sprintSpeed":      sprint_speed.get(name, None),
                 "hrProb":           hr_probability(score),
                 "gameId":           g["id"],
                 "score":            score,
@@ -1084,8 +1248,10 @@ def build_daily_data(date_str):
             })
 
         players.sort(key=lambda x: x["score"], reverse=True)
-        g["players"] = players
-        g["topPick"] = players[0] if players else None
+        g["players"]    = players
+        g["topPick"]    = players[0] if players else None
+        g["gameTotal"]  = game_total
+        g["hpUmpScore"] = ump_score
 
     # Top 5 across all games
     all_players = []
@@ -1174,10 +1340,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json([])
                 return
             try:
-                rosters  = fetch_active_rosters()
-                batting  = fetch_batting_season_stats()
-                savant   = fetch_batting_stats_savant()
-                injuries = fetch_injuries()
+                rosters      = fetch_active_rosters()
+                batting      = fetch_batting_season_stats()
+                savant       = fetch_batting_stats_savant()
+                injuries     = fetch_injuries()
+                sprint_map   = fetch_sprint_speed()
+                pp_map       = fetch_prizepicks_mlb()
 
                 q_lower = q.lower()
                 # Substring matches first
@@ -1223,11 +1391,14 @@ class Handler(BaseHTTPRequestHandler):
                         "avgEV":      round(sav.get("avg_ev", 0), 1),
                         "xwOBA":      round(sav.get("xwoba", 0), 3),
                         "sweetSpot":  round(sav.get("sweet_spot_pct", 0), 1),
-                        "onIL":       name in injuries,
-                        "score":      score,
-                        "tier":       get_tier(score),
-                        "parkFactor": home_pf,
-                        "note":       "Base score: home park, neutral pitcher, calm conditions"
+                        "onIL":        name in injuries,
+                        "score":       score,
+                        "tier":        get_tier(score),
+                        "hrProb":      hr_probability(score),
+                        "parkFactor":  home_pf,
+                        "sprintSpeed": sprint_map.get(name),
+                        "ppLine":      pp_map.get(name, {}).get("line"),
+                        "note":        "Base score: home park, neutral pitcher, calm conditions"
                     })
                 results.sort(key=lambda x: -x["score"])
                 self.send_json(results[:10])

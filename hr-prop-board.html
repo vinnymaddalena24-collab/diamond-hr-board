@@ -2058,7 +2058,11 @@
             pitcherBarrelAllowed: sp.pitcherBarrelAllowed || 0,
             hpUmp: sp.hpUmp || '',
             umpScore: sp.umpScore || 0,
-            hrProb: sp.hrProb || 0,
+            hrProb:      sp.hrProb      || 0,
+            ppLine:      sp.ppLine      ?? null,
+            ppType:      sp.ppType      || '',
+            sprintSpeed: sp.sprintSpeed || null,
+            gameTotal:   sp.gameTotal   || 0,
             score: sc,
             tier: t,
             ml: mlabel(sc),
@@ -2247,9 +2251,13 @@
         const topPick = getGameTopPick(g);
         const wInline = windInline(wx), wAlert = windAlert(wx);
         // Pull ump + bullpen from first server player if available
-        const sp0 = g.serverPlayers && g.serverPlayers[0];
-        const hpUmp = sp0 ? sp0.hpUmp : '';
-        const umpScore = sp0 ? (sp0.umpScore || 0) : 0;
+        const sp0       = g.serverPlayers && g.serverPlayers[0];
+        const hpUmp     = sp0 ? sp0.hpUmp    : '';
+        const umpScore  = sp0 ? (sp0.umpScore||0) : 0;
+        const gameTotal = g.gameTotal || (sp0 ? (sp0.gameTotal||0) : 0);
+        const totalBadge = gameTotal
+          ? `<span class="bdg" style="background:${gameTotal>=9.5?'#0d2d1a':gameTotal<=7?'#2d1515':'#2d2200'};color:${gameTotal>=9.5?'var(--green)':gameTotal<=7?'#f0654a':'var(--gold)'};border:1px solid ${gameTotal>=9.5?'#1a5a34':gameTotal<=7?'#5a2020':'#5a4400'}">O/U ${gameTotal}</span>`
+          : '';
         const umpBadge = hpUmp
           ? `<span class="bdg" style="background:${umpScore > 0.5 ? '#0d2d1a' : umpScore < -0.5 ? '#2d1515' : 'var(--cream)'};color:${umpScore > 0.5 ? 'var(--green)' : umpScore < -0.5 ? '#f0654a' : 'var(--muted)'};border:1px solid ${umpScore > 0.5 ? '#1a5a34' : umpScore < -0.5 ? '#5a2020' : 'var(--rule)'}">⚖ ${hpUmp.split(' ').slice(-1)[0]}</span>`
           : '';
@@ -2274,6 +2282,7 @@
             <span class="bdg btmp">🌡${wx.t}°F</span>
             ${wx.rh ? `<span class="bdg bhumid">💧${wx.rh}%RH</span>` : ''}
             ${wx.baro && wx.baro < 1005 ? `<span class="bdg bpres">↓${wx.baro}hPa</span>` : ''}
+            ${totalBadge}
             ${umpBadge}
             ${bullBadge}
             ${g._fromAPI ? `<span class="bdg" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">● LIVE</span>` : ''}
@@ -2332,6 +2341,9 @@
       const bullBadge = p.oppBullpenEra >= 5.0 ? `<span class="sc pos">BULL ${p.oppBullpenEra}</span>` : '';
       const umpBadge2 = p.umpScore > 0.5 ? `<span class="sc pos">UMP+</span>` : p.umpScore < -0.5 ? `<span class="sc neg">UMP−</span>` : '';
       const hrProbBadge = p.hrProb ? `<span class="sc neu">${p.hrProb}% HR</span>` : '';
+      const ppBadge = p.ppLine != null
+        ? `<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine}${p.ppType==='demon'?' 🔥':''}</span>`
+        : '';
 
       const scoreColor = p.tier === 'S' ? 'var(--green)' : p.tier === 'A' ? 'var(--gold)' : p.tier === 'B' ? '#e3b341' : 'var(--muted)';
       const legData = { name: p.name, team: p.team, gameId: p.gameId, score: p.score, pitcher: p.pitcher.n, hrPct: p.hrPct, barrel: p.barrel, hrProb: p.hrProb || 0 };
@@ -2344,7 +2356,7 @@
     <td>
       <span class="mlb ${p.ml.c}">${p.ml.t}</span>
       <div class="psub" style="margin-top:2px">vs ${p.pitcher.n} · ${p.pitcher.era}ERA · ${p.pitcher.fb || 38}%FB</div>
-      <div class="sbc">${hrProbBadge}${recentLine}${monthLine}${pRecentEra}${fatBadge}${barrBadge}${bullBadge}${umpBadge2}</div>
+      <div class="sbc">${hrProbBadge}${ppBadge}${recentLine}${monthLine}${pRecentEra}${fatBadge}${barrBadge}${bullBadge}${umpBadge2}</div>
     </td>
     <td class="pn hi">${p.HR}</td>
     <td class="pn ${p.hotStreak ? 'vg' : 'hi'}">${p.hrPct.toFixed(1)}%</td>
@@ -2508,6 +2520,8 @@
         ${p.hardHit ? chip('HH', p.hardHit + '%', p.hardHit >= 48 ? 'pos' : '') : ''}
         ${p.avgEV ? chip('EV', p.avgEV) : ''}
         ${p.xwOBA ? chip('xwOBA', p.xwOBA, p.xwOBA >= 0.380 ? 'pos' : '') : ''}
+        ${p.sprintSpeed ? chip('SPD', p.sprintSpeed + 'ft/s') : ''}
+        ${p.ppLine != null ? `<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine} HR</span>` : ''}
       </div>
       <div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);">${p.note}</div>
     </div>
