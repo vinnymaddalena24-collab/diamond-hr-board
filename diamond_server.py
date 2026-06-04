@@ -76,6 +76,26 @@ PARK_FACTORS = {
 # Known domes / retractable roofs (weather excluded when closed)
 DOMES = {"TBR","HOU","MIL","TEX","ARI","TOR","MIA","SEA"}
 
+# Pull-side park bonuses — extra HR boost for pull hitters at short-porch parks
+# L = bonus for left-handed pull hitters (pull to RF), R = right-handed (pull to LF)
+PULL_BONUS = {
+    "NYY": {"L":12,"R": 0},  # 314ft RF short porch
+    "BOS": {"L":10,"R": 0},  # 302ft Pesky Pole
+    "HOU": {"L": 8,"R": 0},  # Crawford Boxes LF → actually short LF, benefits RHB
+    "PHI": {"L": 5,"R": 3},
+    "CIN": {"L": 4,"R": 6},  # Great American BP — short LF
+    "COL": {"L": 5,"R": 5},  # Altitude benefits all
+    "TEX": {"L": 4,"R": 3},
+    "STL": {"L": 2,"R": 4},
+    "BAL": {"L": 2,"R": 3},
+    "MIL": {"L": 2,"R": 4},
+    "LAD": {"L": 2,"R": 5},  # 330ft LF
+    "ATL": {"L": 0,"R": 4},
+}
+
+# Lineup position bonus — cleanup hitters see better pitches
+LINEUP_BONUS = {1:1,2:2,3:4,4:6,5:3,6:1,7:0,8:-1,9:-2}
+
 # ── TEAM ABBREVIATION MAP (MLB API → our codes) ──────────────────────────────
 TEAM_MAP = {
     "TOR":"TOR","BAL":"BAL","NYY":"NYY","TB":"TBR","TBR":"TBR","BOS":"BOS",
@@ -148,6 +168,11 @@ def fetch_schedule(date_str):
                 pf = PARK_FACTORS.get(home, 100)
                 dome = home in DOMES
 
+                # Parse confirmed lineup batting order (player IDs in order)
+                lineup_data = g.get("lineups", {})
+                home_lineup = [p["id"] for p in lineup_data.get("homePlayers", []) if p.get("id")]
+                away_lineup = [p["id"] for p in lineup_data.get("awayPlayers", []) if p.get("id")]
+
                 games.append({
                     "id": f"{away.lower()}-{home.lower()}-{g['gamePk']}",
                     "gamePk": g["gamePk"],
@@ -156,6 +181,8 @@ def fetch_schedule(date_str):
                     "venue": venue_name,
                     "parkFactor": pf,
                     "isDome": dome,
+                    "homeLineup": home_lineup,
+                    "awayLineup": away_lineup,
                     "awayPitcher": {
                         "id": ap_raw.get("id"),
                         "name": ap_raw.get("fullName", "TBD"),
@@ -283,13 +310,14 @@ def fetch_batting_stats_savant():
                 continue
             try:
                 result[name] = {
-                    "barrel_pct": float(row.get("barrel_batted_rate", 0) or 0),
-                    "hard_hit_pct": float(row.get("hard_hit_percent", 0) or 0),
-                    "avg_ev": float(row.get("avg_hit_speed", 0) or 0),
-                    "xwoba": float(row.get("xwoba", 0) or 0),
-                    "xslg": float(row.get("xslg", 0) or 0),
-                    "sweet_spot_pct": float(row.get("sweet_spot_percent", 0) or 0),
-                    "launch_angle": float(row.get("avg_launch_angle", 0) or 0),
+                    "barrel_pct":    float(row.get("barrel_batted_rate", 0) or 0),
+                    "hard_hit_pct":  float(row.get("hard_hit_percent", 0) or 0),
+                    "avg_ev":        float(row.get("avg_hit_speed", 0) or 0),
+                    "xwoba":         float(row.get("xwoba", 0) or 0),
+                    "xslg":          float(row.get("xslg", 0) or 0),
+                    "sweet_spot_pct":float(row.get("sweet_spot_percent", 0) or 0),
+                    "launch_angle":  float(row.get("avg_launch_angle", 0) or 0),
+                    "pull_pct":      float(row.get("pull_percent", 0) or 0),
                 }
             except:
                 continue
@@ -431,6 +459,78 @@ def fetch_batting_season_stats():
         print(f"[batting] Error: {e}")
         return {}
 
+def fetch_recent_batting_stats(days=15):
+    """Fetch last N days batting stats for hot-streak detection (60/40 blend with season)"""
+    cached = cache_get(f"recent_batting_{days}")
+    if cached: return cached
+    et = datetime.now(timezone(timedelta(hours=-4)))
+    end_str   = et.strftime("%Y-%m-%d")
+    start_str = (et - timedelta(days=days)).strftime("%Y-%m-%d")
+    url = (f"https://statsapi.mlb.com/api/v1/stats"
+           f"?stats=byDateRange&group=hitting&season=2026&sportId=1"
+           f"&startDate={start_str}&endDate={end_str}&limit=600")
+    try:
+        data = fetch(url)
+        result = {}
+        for split in data.get("stats", [{}])[0].get("splits", []):
+            stat   = split.get("stat", {})
+            name   = split.get("player", {}).get("fullName", "")
+            if not name: continue
+            g  = int(stat.get("gamesPlayed", 1) or 1)
+            hr = int(stat.get("homeRuns", 0) or 0)
+            def _f(key):
+                v = stat.get(key, "0")
+                try: return float(str(v).replace(".","0.",1) if str(v).startswith(".") else v)
+                except: return 0.0
+            result[name] = {
+                "G_recent":      g,
+                "HR_recent":     hr,
+                "hrPct_recent":  round((hr / g) * 100, 1) if g > 0 else 0,
+                "OPS_recent":    _f("ops"),
+                "SLG_recent":    _f("slg"),
+            }
+        cache_set(f"recent_batting_{days}", result)
+        print(f"[recent_{days}d] Loaded {len(result)} batters")
+        return result
+    except Exception as e:
+        print(f"[recent_batting] Error: {e}")
+        return {}
+
+def fetch_pitcher_game_log(pitcher_id):
+    """Last 5 starts: rolling 3-start ERA, days rest, fatigue flag"""
+    if not pitcher_id: return {}
+    cached = cache_get(f"plog_{pitcher_id}")
+    if cached: return cached
+    url = (f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
+           f"?stats=gameLog&group=pitching&season=2026&limit=5")
+    try:
+        data   = fetch(url)
+        splits = data.get("stats", [{}])[0].get("splits", [])
+        if not splits: return {}
+        recent = splits[:3]
+        total_er = sum(float(s["stat"].get("earnedRuns", 0) or 0) for s in recent)
+        total_ip = sum(float(s["stat"].get("inningsPitched", 0) or 0) for s in recent)
+        recent_era = round((total_er / total_ip) * 9, 2) if total_ip > 0 else 4.50
+        last_date_str = splits[0].get("date", "")
+        days_rest = 5
+        if last_date_str:
+            try:
+                last_date = datetime.strptime(last_date_str, "%Y-%m-%d")
+                days_rest = (datetime.now() - last_date).days
+            except: pass
+        last_pitches = int(splits[0]["stat"].get("numberOfPitches", 90) or 90)
+        result = {
+            "recent_era":  recent_era,
+            "days_rest":   days_rest,
+            "last_pitches":last_pitches,
+            "fatigued":    days_rest <= 3 or last_pitches >= 105,
+        }
+        cache_set(f"plog_{pitcher_id}", result)
+        return result
+    except Exception as e:
+        print(f"[plog {pitcher_id}] Error: {e}")
+        return {}
+
 # ── SCORING ENGINE ────────────────────────────────────────────────────────────
 def wind_adj(wx):
     if wx.get("dome"): return 0
@@ -474,7 +574,16 @@ def pitcher_vuln(p_stats):
     if q == "elite":  s -= 12
     return max(0, min(100, s))
 
-def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx):
+def pull_adj(bats, home_team):
+    pb = PULL_BONUS.get(home_team, {})
+    side = "L" if bats in ("L", "S") else "R"
+    return pb.get(side, 0)
+
+def lineup_adj(pos):
+    return LINEUP_BONUS.get(pos, 0)
+
+def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
+                   recent_stats=None, pitcher_log=None, lineup_pos=0, home_team=""):
     hr_pct    = batter_stats.get("hrPct", 0)
     ops       = batter_stats.get("OPS", 0)
     slg       = batter_stats.get("SLG", 0)
@@ -482,8 +591,15 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx):
     barrel    = savant_stats.get("barrel_pct", 8)
     hard_hit  = savant_stats.get("hard_hit_pct", 40)
     sweet     = savant_stats.get("sweet_spot_pct", 36)
+    pull_pct  = savant_stats.get("pull_pct", 40)
     bats      = batter_stats.get("bats", "R")
     ph        = pitcher_stats.get("hand", "R")
+
+    # ── Blend recent 15-day form (60%) with full season (40%) ─────────────────
+    if recent_stats and recent_stats.get("G_recent", 0) >= 7:
+        hr_pct = recent_stats["hrPct_recent"] * 0.60 + hr_pct * 0.40
+        ops    = recent_stats["OPS_recent"]   * 0.55 + ops    * 0.45
+        slg    = recent_stats["SLG_recent"]   * 0.55 + slg    * 0.45
 
     s = 0
     s += min(hr_pct * 2.3, 27)
@@ -493,13 +609,39 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx):
     s += min((hard_hit - 40) * 0.22, 5)
     s += min((iso - 0.180) * 18, 4)
     s += min((sweet - 36) * 0.2, 2)
-    s += pitcher_vuln(pitcher_stats) * 0.17
+
+    # ── Pull factor — high pull% at short-porch parks ─────────────────────────
+    if pull_pct > 40:
+        s += pull_adj(bats, home_team) * ((pull_pct - 38) / 22)
+
+    # ── Pitcher vulnerability — blend season ERA with last-3-start ERA ─────────
+    era = pitcher_stats.get("era", 4.50)
+    if pitcher_log and pitcher_log.get("recent_era"):
+        recent_era = pitcher_log["recent_era"]
+        era = recent_era * 0.60 + era * 0.40  # weight recent form heavier
+    fb  = pitcher_stats.get("fbPct", 38)
+    vel = pitcher_stats.get("vel", 92.5)
+    q   = pitcher_stats.get("quality", "mid")
+    pv  = 28 + (era - 3.5) * 5.5
+    pv += (fb - 38) * 0.35
+    if vel < 91: pv += 3
+    if q == "danger": pv += 16
+    if q == "elite":  pv -= 12
+    if pitcher_log and pitcher_log.get("fatigued"):      pv += 7
+    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
+    s += max(0, min(100, pv)) * 0.17
+
+    # ── Park, weather, platoon ─────────────────────────────────────────────────
     s += ((pf - 100) / 50) * 8
     s += wind_adj(wx) * 0.48
     s += temp_adj(wx.get("temp", 72))
     s += baro_adj(wx.get("pressure", 1013))
     s += humid_adj(wx.get("humidity", 55))
     s += platoon_adj(bats, ph)
+
+    # ── Lineup position ────────────────────────────────────────────────────────
+    s += lineup_adj(lineup_pos)
+
     return max(0, min(99, round(s)))
 
 def get_tier(score):
@@ -517,6 +659,7 @@ def build_daily_data(date_str):
     print(f"[build] Fetching fresh data for {date_str}...")
     games       = fetch_schedule(date_str)
     batting     = fetch_batting_season_stats()
+    recent      = fetch_recent_batting_stats(15)
     savant      = fetch_batting_stats_savant()
     rosters     = fetch_active_rosters()
     injuries    = fetch_injuries()
@@ -539,15 +682,19 @@ def build_daily_data(date_str):
         wx = fetch_weather(home, hour)
         g["weather"] = wx
 
-        # Pitcher stats
+        # Pitcher stats + recent game log
         for side in ["awayPitcher", "homePitcher"]:
             pid = g[side].get("id")
             stats = fetch_pitcher_stats(pid) if pid else {}
+            plog  = fetch_pitcher_game_log(pid) if pid else {}
             g[side].update(stats)
+            g[side]["_log"] = plog
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
 
         pf = g["parkFactor"]
+        home_lineup = g.get("homeLineup", [])
+        away_lineup = g.get("awayLineup", [])
 
         # Build player projections for this game
         players = []
@@ -558,42 +705,64 @@ def build_daily_data(date_str):
             team = roster_info.get("team", "")
             if team not in game_teams: continue
             pos = roster_info.get("pos", "")
-            if pos in ("P", "SP", "RP"): continue  # skip pitchers
+            if pos in ("P", "SP", "RP"): continue
 
-            bat_stat = batting.get(name, {})
-            if bat_stat.get("G", 0) < 5: continue  # skip players with too few games
+            bat_stat = dict(batting.get(name, {}))
+            if bat_stat.get("G", 0) < 5: continue
 
-            sav = savant.get(name, {})
-            is_away = team == g["away"]
+            sav         = savant.get(name, {})
+            recent_stat = recent.get(name, {})
+            is_away     = team == g["away"]
             opp_pitcher = g["homePitcher"] if is_away else g["awayPitcher"]
+            pitcher_log = opp_pitcher.get("_log", {})
+            pid         = roster_info.get("id")
+            lineup      = away_lineup if is_away else home_lineup
+            lineup_pos  = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
             bat_stat["bats"] = roster_info.get("bats", "R")
-            score = calc_composite(bat_stat, sav, opp_pitcher, pf, wx)
-            tier  = get_tier(score)
+            score = calc_composite(
+                bat_stat, sav, opp_pitcher, pf, wx,
+                recent_stats=recent_stat,
+                pitcher_log=pitcher_log,
+                lineup_pos=lineup_pos,
+                home_team=home
+            )
+            tier = get_tier(score)
+
+            recent_hr_pct = recent_stat.get("hrPct_recent", 0)
+            hot_streak    = recent_hr_pct > bat_stat.get("hrPct", 0) * 1.35 and recent_stat.get("G_recent", 0) >= 7
 
             players.append({
-                "name":      name,
-                "team":      team,
-                "pos":       pos,
-                "bats":      roster_info.get("bats", "R"),
-                "G":         bat_stat.get("G", 0),
-                "HR":        bat_stat.get("HR", 0),
-                "hrPct":     bat_stat.get("hrPct", 0),
-                "AVG":       bat_stat.get("AVG", 0),
-                "OPS":       bat_stat.get("OPS", 0),
-                "SLG":       bat_stat.get("SLG", 0),
-                "ISO":       bat_stat.get("ISO", 0),
-                "barrel":    sav.get("barrel_pct", 0),
-                "hardHit":   sav.get("hard_hit_pct", 0),
-                "avgEV":     sav.get("avg_ev", 0),
-                "xwOBA":     sav.get("xwoba", 0),
-                "sweetSpot": sav.get("sweet_spot_pct", 0),
-                "pitcher":   opp_pitcher.get("name", "TBD"),
-                "pitcherEra":opp_pitcher.get("era", 4.50),
-                "pitcherHand":opp_pitcher.get("hand", "R"),
-                "gameId":    g["id"],
-                "score":     score,
-                "tier":      tier,
+                "name":             name,
+                "team":             team,
+                "pos":              pos,
+                "bats":             roster_info.get("bats", "R"),
+                "G":                bat_stat.get("G", 0),
+                "HR":               bat_stat.get("HR", 0),
+                "hrPct":            bat_stat.get("hrPct", 0),
+                "AVG":              bat_stat.get("AVG", 0),
+                "OPS":              bat_stat.get("OPS", 0),
+                "SLG":              bat_stat.get("SLG", 0),
+                "ISO":              bat_stat.get("ISO", 0),
+                "barrel":           sav.get("barrel_pct", 0),
+                "hardHit":          sav.get("hard_hit_pct", 0),
+                "avgEV":            sav.get("avg_ev", 0),
+                "xwOBA":            sav.get("xwoba", 0),
+                "sweetSpot":        sav.get("sweet_spot_pct", 0),
+                "pullPct":          sav.get("pull_pct", 0),
+                "pitcher":          opp_pitcher.get("name", "TBD"),
+                "pitcherEra":       opp_pitcher.get("era", 4.50),
+                "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),
+                "pitcherHand":      opp_pitcher.get("hand", "R"),
+                "pitcherFatigued":  pitcher_log.get("fatigued", False),
+                "lineupPos":        lineup_pos,
+                "confirmed":        lineup_pos > 0,
+                "recentHR":         recent_stat.get("HR_recent", 0),
+                "recentHRPct":      recent_hr_pct,
+                "hotStreak":        hot_streak,
+                "gameId":           g["id"],
+                "score":            score,
+                "tier":             tier,
             })
 
         players.sort(key=lambda x: x["score"], reverse=True)

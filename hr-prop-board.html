@@ -721,31 +721,39 @@ function buildGamePlayers(g){
       const t    = sp.tier   || tier(sc);
       const bats = sp.bats   || 'R';
       return {
-        name:      sp.name,
-        team:      sp.team,
-        pos:       sp.pos       || '',
-        G:         sp.G         || 0,
-        HR:        sp.HR        || 0,
-        hrPct:     sp.hrPct     || 0,
-        SLG:       sp.SLG       || 0,
-        OPS:       sp.OPS       || 0,
+        name:             sp.name,
+        team:             sp.team,
+        pos:              sp.pos             || '',
+        G:                sp.G               || 0,
+        HR:               sp.HR              || 0,
+        hrPct:            sp.hrPct           || 0,
+        SLG:              sp.SLG             || 0,
+        OPS:              sp.OPS             || 0,
         bats,
-        barrel:    sp.barrel    || 0,
-        hardHit:   sp.hardHit   || 0,
-        iso:       sp.ISO       || 0,
-        chase:     28,
-        sweet:     sp.sweetSpot || 36,
-        travel:    0,
-        lineMoved: false,
-        pitcher:   pitcherObj,
-        score:     sc,
-        tier:      t,
-        ml:        mlabel(sc),
-        breakdown: [],
-        windAdj:   wa,
-        platoon:   platAdj(bats, pitcherObj.h),
-        fat:       fatFlag(pitcherObj),
-        gameId:    g.id
+        barrel:           sp.barrel          || 0,
+        hardHit:          sp.hardHit         || 0,
+        iso:              sp.ISO             || 0,
+        chase:            28,
+        sweet:            sp.sweetSpot       || 36,
+        pullPct:          sp.pullPct         || 0,
+        travel:           0,
+        lineMoved:        false,
+        pitcher:          pitcherObj,
+        pitcherRecentEra: sp.pitcherRecentEra|| pitcherObj.era || 4.50,
+        pitcherFatigued:  sp.pitcherFatigued || false,
+        lineupPos:        sp.lineupPos       || 0,
+        confirmed:        sp.confirmed       || false,
+        recentHR:         sp.recentHR        || 0,
+        recentHRPct:      sp.recentHRPct     || 0,
+        hotStreak:        sp.hotStreak       || false,
+        score:            sc,
+        tier:             t,
+        ml:               mlabel(sc),
+        breakdown:        [],
+        windAdj:          wa,
+        platoon:          platAdj(bats, pitcherObj.h),
+        fat:              sp.pitcherFatigued || fatFlag(pitcherObj),
+        gameId:           g.id
       };
     });
   }
@@ -974,23 +982,31 @@ function row(p){
   const wTxt=p.windAdj>0?`+${p.windAdj}`:p.windAdj<0?`${p.windAdj}`:'—';
   const wCls=p.windAdj>0?'wind-u':p.windAdj<0?'wind-d':'wind-n';
   const flags=[];
-  if(p.lineMoved)flags.push(`<span class="flag flag-lm">📈 LINE↑</span>`);
-  if(p.travel===2)flags.push(`<span class="flag flag-trav">✈ TRAVEL</span>`);
-  if(p.platoon>=8)flags.push(`<span class="flag" style="background:#eaf5ef;color:var(--green);border:1px solid #80c890">L/R✓</span>`);
-  const bkdHtml=p.breakdown.map(b=>`<span class="sc ${b.v>2?'pos':b.v<0?'neg':b.v>0?'neu':''}">${b.l}${b.v>0?'+':''}${b.v}</span>`).join('');
-  const scoreColor=p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#c87000':'var(--muted)';
-  // Safely serialize player data for onclick
+  if(p.hotStreak)   flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT</span>`);
+  if(p.confirmed && p.lineupPos>0) flags.push(`<span class="flag" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">#${p.lineupPos} ✓</span>`);
+  if(!p.confirmed)  flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">LINEUP?</span>`);
+  if(p.platoon>=8)  flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R✓</span>`);
+  if(p.fat)         flags.push(`<span class="flag flag-fat">⚡ FAT</span>`);
+  if(p.lineMoved)   flags.push(`<span class="flag flag-lm">📈 LINE↑</span>`);
+  const recentLine = p.recentHRPct>0
+    ? `<span class="sc ${p.hotStreak?'pos':''}">L15: ${p.recentHRPct.toFixed(1)}% HR/G (${p.recentHR}HR)</span>`
+    : '';
+  const pRecentEra = p.pitcherRecentEra && p.pitcherRecentEra !== p.pitcher.era
+    ? `<span class="sc ${p.pitcherRecentEra>5?'pos':p.pitcherRecentEra<3?'neg':''}">P L3: ${p.pitcherRecentEra}ERA</span>`
+    : '';
+  const fatBadge = p.pitcherFatigued ? `<span class="sc neg">P FATIGUED</span>` : '';
+  const scoreColor=p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--muted)';
   const legData={name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel};
   return `<tr class="pr${sel?' pk':''}" data-leg='${JSON.stringify(legData)}' onclick="handleRowClick(this)">
     <td><div class="pdot"></div></td>
     <td><div class="pname">${p.name}</div><div class="psub">${p.team} · ${p.pos}${flags.join('')}</div></td>
     <td>
       <span class="mlb ${p.ml.c}">${p.ml.t}</span>
-      <div class="psub" style="margin-top:2px">vs ${p.pitcher.n} · ${p.pitcher.era}ERA · ${p.pitcher.fb}%FB</div>
-      <div class="sbc">${bkdHtml}</div>
+      <div class="psub" style="margin-top:2px">vs ${p.pitcher.n} · ${p.pitcher.era}ERA · ${p.pitcher.fb||38}%FB</div>
+      <div class="sbc">${recentLine}${pRecentEra}${fatBadge}</div>
     </td>
     <td class="pn hi">${p.HR}</td>
-    <td class="pn hi">${p.hrPct.toFixed(1)}%</td>
+    <td class="pn ${p.hotStreak?'vg':'hi'}">${p.hrPct.toFixed(1)}%</td>
     <td class="pn ${p.barrel>=14?'vg':'hi'}">${p.barrel.toFixed(1)}%</td>
     <td class="pn ${p.hardHit>=48?'vg':'hi'}">${p.hardHit.toFixed(1)}%</td>
     <td class="pn ${p.chase<=25?'vg':p.chase>=34?'wa':''}">${p.chase.toFixed(1)}%</td>
