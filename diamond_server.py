@@ -902,67 +902,81 @@ def build_daily_data(date_str):
     if cached: return cached
 
     print(f"[build] Fetching fresh data for {date_str}...")
-    # Pre-fetch shared 40-man roster so both injuries + rosters hit cache
-    fetch_40man_roster()
 
-    # Fetch all independent data sources in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
-        f_games    = ex.submit(fetch_schedule, date_str)
-        f_batting  = ex.submit(fetch_batting_season_stats)
-        f_recent   = ex.submit(fetch_recent_batting_stats, 15)
-        f_savant   = ex.submit(fetch_batting_stats_savant)
-        f_rosters  = ex.submit(fetch_active_rosters)
-        f_injuries = ex.submit(fetch_injuries)
-        f_homeaway = ex.submit(fetch_home_away_splits)
-        f_monthly  = ex.submit(fetch_monthly_batting)
-        f_bullpen  = ex.submit(fetch_team_bullpen_era)
-        f_psav     = ex.submit(fetch_pitcher_savant_allowed)
+    # ── Step 1: Schedule first (need pitcher IDs + game list for step 2) ─────
+    games = fetch_schedule(date_str)
 
-    games           = f_games.result()
-    batting         = f_batting.result()
-    recent          = f_recent.result()
-    savant          = f_savant.result()
-    rosters         = f_rosters.result()
-    injuries        = f_injuries.result()
-    home_away       = f_homeaway.result()
-    monthly         = f_monthly.result()
-    bullpen         = f_bullpen.result()
-    pitcher_sav_map = f_psav.result()
-    _, et_hour = get_today_str()
-
-    # Enrich games with pitcher stats + weather + player projections
+    # Collect unique pitcher IDs and game hours
+    pitcher_ids = set()
+    game_wx_keys = {}  # game_id → (home, hour)
     for g in games:
+        for side in ["awayPitcher", "homePitcher"]:
+            pid = g[side].get("id")
+            if pid: pitcher_ids.add(pid)
         home = g["home"]
-
-        # Game hour from time string
         try:
-            t = g["time"].replace(" ET", "").replace(" PM", "").replace(" AM", "")
+            t = g["time"].replace(" ET","").replace(" PM","").replace(" AM","")
             hour = int(t.split(":")[0])
             is_pm = "PM" in g["time"]
             if is_pm and hour != 12: hour += 12
             if not is_pm and hour == 12: hour = 0
         except:
-            hour = 19  # default 7pm
+            hour = 19
+        game_wx_keys[g["id"]] = (home, hour)
 
-        wx = fetch_weather(home, hour)
-        g["weather"] = wx
+    # ── Step 2: Fetch EVERYTHING in one parallel batch ────────────────────────
+    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as ex:
+        # Core data
+        f_batting  = ex.submit(fetch_batting_season_stats)
+        f_recent   = ex.submit(fetch_recent_batting_stats, 15)
+        f_savant   = ex.submit(fetch_batting_stats_savant)
+        f_40man    = ex.submit(fetch_40man_roster)   # warm shared cache
+        f_rosters  = ex.submit(fetch_active_rosters)
+        f_injuries = ex.submit(fetch_injuries)
+        # Enrichment data (longer TTL, fail gracefully)
+        f_homeaway = ex.submit(fetch_home_away_splits)
+        f_monthly  = ex.submit(fetch_monthly_batting)
+        f_bullpen  = ex.submit(fetch_team_bullpen_era)
+        f_psav     = ex.submit(fetch_pitcher_savant_allowed)
+        # All pitcher stats + logs in parallel
+        f_p_stats  = {pid: ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
+        f_p_logs   = {pid: ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
+        # All weather in parallel
+        f_wx = {}
+        for gid, (home, hour) in game_wx_keys.items():
+            f_wx[gid] = ex.submit(fetch_weather, home, hour)
 
-        # Pitcher stats + recent game log + Savant allowed stats (parallel per game)
+    # Collect results safely
+    def safe(f):
+        try: return f.result() or {}
+        except: return {}
+
+    batting         = safe(f_batting)
+    recent          = safe(f_recent)
+    savant          = safe(f_savant)
+    rosters         = safe(f_rosters)
+    injuries        = safe(f_injuries)
+    home_away       = safe(f_homeaway)
+    monthly         = safe(f_monthly)
+    bullpen         = safe(f_bullpen)
+    pitcher_sav_map = safe(f_psav)
+    pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
+    pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
+    weather_map     = {gid: safe(f) for gid, f in f_wx.items()}
+    _, et_hour = get_today_str()
+
+    # ── Step 3: Assign pre-fetched data to games (zero network calls) ─────────
+    for g in games:
+        g["weather"] = weather_map.get(g["id"], {
+            "dome": False, "temp": 72, "wind_mph": 5, "wind_dir": 180,
+            "direction": "cross", "humidity": 55, "pressure": 1013, "note": ""})
+
         ump_score = ump_zone_adj(g.get("hpUmp", ""))
-        ap_id = g["awayPitcher"].get("id")
-        hp_id = g["homePitcher"].get("id")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pex:
-            f_ap_stats = pex.submit(fetch_pitcher_stats, ap_id) if ap_id else None
-            f_hp_stats = pex.submit(fetch_pitcher_stats, hp_id) if hp_id else None
-            f_ap_log   = pex.submit(fetch_pitcher_game_log, ap_id) if ap_id else None
-            f_hp_log   = pex.submit(fetch_pitcher_game_log, hp_id) if hp_id else None
-        for side, f_stats, f_log in [
-            ("awayPitcher", f_ap_stats, f_ap_log),
-            ("homePitcher", f_hp_stats, f_hp_log),
-        ]:
+        for side in ["awayPitcher", "homePitcher"]:
+            pid   = g[side].get("id")
             name  = g[side].get("name", "")
-            stats = (f_stats.result() if f_stats else {}) or {}
-            plog  = (f_log.result()   if f_log   else {}) or {}
+            stats = pitcher_stats.get(pid, {})
+            plog  = pitcher_logs.get(pid, {})
             psav  = pitcher_sav_map.get(name, {})
             g[side].update(stats)
             g[side]["_log"]  = plog
@@ -971,10 +985,11 @@ def build_daily_data(date_str):
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
 
         pf = g["parkFactor"]
+        wx = g["weather"]
         home_lineup = g.get("homeLineup", [])
         away_lineup = g.get("awayLineup", [])
-        opp_bullpen_away = bullpen.get(g["away"], 4.50)  # bullpen of away team
-        opp_bullpen_home = bullpen.get(g["home"], 4.50)  # bullpen of home team
+        opp_bullpen_away = bullpen.get(g["away"], 4.50)
+        opp_bullpen_home = bullpen.get(g["home"], 4.50)
 
         # Build player projections for this game
         players = []
