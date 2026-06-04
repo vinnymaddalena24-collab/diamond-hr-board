@@ -25,7 +25,9 @@ from urllib.parse import urlparse, parse_qs
 PORT = int(os.environ.get("PORT", 8765))
 HOST = os.environ.get("HOST", "0.0.0.0")
 CACHE_TTL    = 900   # 15 minutes — general data
-ROSTER_TTL   = 600   # 10 minutes — rosters + injuries refresh faster for trade/IL accuracy
+ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
+SPLITS_TTL   = 3600  # 1 hour — home/away + monthly splits (rarely change intraday)
+API_TIMEOUT  = 10    # seconds — hard cap on all external API calls
 USER_AGENT = "DiamondHRBoard/1.0"
 
 # Stadium coordinates for weather (home team → lat/lng)
@@ -133,10 +135,23 @@ def cache_set(key, data):
         _cache[key] = {"ts": time.time(), "data": data}
 
 # ── HTTP HELPER ──────────────────────────────────────────────────────────────
-def fetch(url, timeout=10):
+def fetch(url, timeout=None):
     req = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(req, timeout=timeout) as r:
+    with urlopen(req, timeout=timeout or API_TIMEOUT) as r:
         return json.loads(r.read().decode())
+
+def fetch_40man_roster():
+    """Shared 40-man roster fetch — cached so injuries + rosters don't double-fetch."""
+    cached = cache_get("_40man", ttl=ROSTER_TTL)
+    if cached: return cached
+    try:
+        data = fetch("https://statsapi.mlb.com/api/v1/teams"
+                     "?sportId=1&hydrate=roster(rosterType=40Man)")
+        cache_set("_40man", data)
+        return data
+    except Exception as e:
+        print(f"[40man] Error: {e}")
+        return {"teams": []}
 
 # ── MLB STATS API ─────────────────────────────────────────────────────────────
 def get_today_str():
@@ -268,11 +283,9 @@ def fetch_injuries():
     IL_CODES = {"IL10","IL15","IL60","DL","10D","15D","60D",
                 "BEREAVEMENT","FAMILY_MEDICAL","SUSPENDED","DES"}
 
-    # ── Primary: 40-man roster status ────────────────────────────────────────
+    # ── Primary: 40-man roster status (shared cached fetch) ──────────────────
     try:
-        url = ("https://statsapi.mlb.com/api/v1/teams"
-               "?sportId=1&hydrate=roster(rosterType=40Man)")
-        data = fetch(url, timeout=20)
+        data = fetch_40man_roster()
         for team in data.get("teams", []):
             for player in team.get("roster", []):
                 code = (player.get("status", {}).get("code") or "").upper()
@@ -451,9 +464,7 @@ def fetch_active_rosters():
 
     # ── Source 2: 40-man roster — authoritative current-team post-trade ───────
     try:
-        url40 = ("https://statsapi.mlb.com/api/v1/teams"
-                 "?sportId=1&hydrate=roster(rosterType=40Man)")
-        data40 = fetch(url40, timeout=20)
+        data40 = fetch_40man_roster()
         for team_obj in data40.get("teams", []):
             abbr = team_obj.get("abbreviation", "")
             team = TEAM_MAP.get(abbr, abbr)
@@ -588,7 +599,7 @@ def fetch_pitcher_game_log(pitcher_id):
 
 def fetch_home_away_splits():
     """Home/away HR and OPS splits for all batters"""
-    cached = cache_get("home_away_splits")
+    cached = cache_get("home_away_splits", ttl=SPLITS_TTL)
     if cached: return cached
     url = ("https://statsapi.mlb.com/api/v1/stats"
            "?stats=homeAndAway&group=hitting&season=2026&sportId=1&limit=700")
@@ -624,7 +635,7 @@ def fetch_monthly_batting():
     """Current-month batting stats for hot/cold month detection"""
     et    = datetime.now(timezone(timedelta(hours=-4)))
     month = et.month
-    cached = cache_get(f"monthly_{month}")
+    cached = cache_get(f"monthly_{month}", ttl=SPLITS_TTL)
     if cached: return cached
     url = ("https://statsapi.mlb.com/api/v1/stats"
            "?stats=byMonth&group=hitting&season=2026&sportId=1&limit=700")
@@ -684,7 +695,7 @@ def fetch_team_bullpen_era():
 
 def fetch_pitcher_savant_allowed():
     """Pitcher Statcast allowed stats: barrel%, hard hit% against — better vuln signal"""
-    cached = cache_get("pitcher_savant_allowed")
+    cached = cache_get("pitcher_savant_allowed", ttl=SPLITS_TTL)
     if cached: return cached
     url = (
         "https://baseballsavant.mlb.com/leaderboard/statcast"
@@ -891,8 +902,11 @@ def build_daily_data(date_str):
     if cached: return cached
 
     print(f"[build] Fetching fresh data for {date_str}...")
+    # Pre-fetch shared 40-man roster so both injuries + rosters hit cache
+    fetch_40man_roster()
+
     # Fetch all independent data sources in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
         f_games    = ex.submit(fetch_schedule, date_str)
         f_batting  = ex.submit(fetch_batting_season_stats)
         f_recent   = ex.submit(fetch_recent_batting_stats, 15)
@@ -904,15 +918,15 @@ def build_daily_data(date_str):
         f_bullpen  = ex.submit(fetch_team_bullpen_era)
         f_psav     = ex.submit(fetch_pitcher_savant_allowed)
 
-    games      = f_games.result()
-    batting    = f_batting.result()
-    recent     = f_recent.result()
-    savant     = f_savant.result()
-    rosters    = f_rosters.result()
-    injuries   = f_injuries.result()
-    home_away  = f_homeaway.result()
-    monthly    = f_monthly.result()
-    bullpen    = f_bullpen.result()
+    games           = f_games.result()
+    batting         = f_batting.result()
+    recent          = f_recent.result()
+    savant          = f_savant.result()
+    rosters         = f_rosters.result()
+    injuries        = f_injuries.result()
+    home_away       = f_homeaway.result()
+    monthly         = f_monthly.result()
+    bullpen         = f_bullpen.result()
     pitcher_sav_map = f_psav.result()
     _, et_hour = get_today_str()
 
@@ -933,13 +947,22 @@ def build_daily_data(date_str):
         wx = fetch_weather(home, hour)
         g["weather"] = wx
 
-        # Pitcher stats + recent game log + Savant allowed stats
+        # Pitcher stats + recent game log + Savant allowed stats (parallel per game)
         ump_score = ump_zone_adj(g.get("hpUmp", ""))
-        for side in ["awayPitcher", "homePitcher"]:
-            pid   = g[side].get("id")
+        ap_id = g["awayPitcher"].get("id")
+        hp_id = g["homePitcher"].get("id")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pex:
+            f_ap_stats = pex.submit(fetch_pitcher_stats, ap_id) if ap_id else None
+            f_hp_stats = pex.submit(fetch_pitcher_stats, hp_id) if hp_id else None
+            f_ap_log   = pex.submit(fetch_pitcher_game_log, ap_id) if ap_id else None
+            f_hp_log   = pex.submit(fetch_pitcher_game_log, hp_id) if hp_id else None
+        for side, f_stats, f_log in [
+            ("awayPitcher", f_ap_stats, f_ap_log),
+            ("homePitcher", f_hp_stats, f_hp_log),
+        ]:
             name  = g[side].get("name", "")
-            stats = fetch_pitcher_stats(pid) if pid else {}
-            plog  = fetch_pitcher_game_log(pid) if pid else {}
+            stats = (f_stats.result() if f_stats else {}) or {}
+            plog  = (f_log.result()   if f_log   else {}) or {}
             psav  = pitcher_sav_map.get(name, {})
             g[side].update(stats)
             g[side]["_log"]  = plog
