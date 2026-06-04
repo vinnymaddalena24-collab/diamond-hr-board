@@ -1204,6 +1204,7 @@ def build_daily_data(date_str):
 
             players.append({
                 "name":             name,
+                "mlbId":            roster_info.get("id"),
                 "team":             team,
                 "pos":              pos,
                 "bats":             roster_info.get("bats", "R"),
