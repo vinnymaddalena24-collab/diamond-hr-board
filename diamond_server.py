@@ -15,12 +15,11 @@ Fetches on every page load:
 All data is cached for 15 minutes so rapid refreshes don't re-fetch.
 """
 
-import json, time, threading, traceback, difflib, os
+import json, time, threading, traceback, difflib, os, concurrent.futures
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
-from urllib.parse import urlencode, urlparse, parse_qs
-from urllib.error import URLError
+from urllib.parse import urlparse, parse_qs
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────
 PORT = int(os.environ.get("PORT", 8765))
@@ -96,6 +95,16 @@ PULL_BONUS = {
 # Lineup position bonus — cleanup hitters see better pitches
 LINEUP_BONUS = {1:1,2:2,3:4,4:6,5:3,6:1,7:0,8:-1,9:-2}
 
+# Umpire zone tendencies: positive = hitter-friendly (tight zone → more FBs in zone)
+# negative = pitcher-friendly (liberal zone → pitchers expand early in count)
+UMP_ZONES = {
+    "CB Bucknor":       -2.0, "Angel Hernandez":  -1.8, "Joe West":         -1.2,
+    "Laz Diaz":         -1.5, "Doug Eddings":     -1.0, "Gary Cederstrom":  -0.8,
+    "Ron Kulpa":         1.5, "Quinn Wolcott":     1.2, "Marvin Hudson":     1.0,
+    "Mark Carlson":      0.8, "John Tumpane":      0.6, "Jim Reynolds":     -0.5,
+    "Stu Scheurwater":   1.0, "Adam Hamari":       0.7, "Chris Guccione":   -0.6,
+}
+
 # ── TEAM ABBREVIATION MAP (MLB API → our codes) ──────────────────────────────
 TEAM_MAP = {
     "TOR":"TOR","BAL":"BAL","NYY":"NYY","TB":"TBR","TBR":"TBR","BOS":"BOS",
@@ -138,7 +147,7 @@ def fetch_schedule(date_str):
 
     url = (f"https://statsapi.mlb.com/api/v1/schedule"
            f"?sportId=1&date={date_str}"
-           f"&hydrate=probablePitcher,lineups,team,venue,weather,linescore")
+           f"&hydrate=probablePitcher,lineups,team,venue,weather,linescore,officials")
     try:
         data = fetch(url)
         games = []
@@ -173,6 +182,13 @@ def fetch_schedule(date_str):
                 home_lineup = [p["id"] for p in lineup_data.get("homePlayers", []) if p.get("id")]
                 away_lineup = [p["id"] for p in lineup_data.get("awayPlayers", []) if p.get("id")]
 
+                # Parse HP umpire
+                hp_ump = ""
+                for o in g.get("officials", []):
+                    if o.get("officialType") == "Home Plate":
+                        hp_ump = o.get("official", {}).get("fullName", "")
+                        break
+
                 games.append({
                     "id": f"{away.lower()}-{home.lower()}-{g['gamePk']}",
                     "gamePk": g["gamePk"],
@@ -183,6 +199,7 @@ def fetch_schedule(date_str):
                     "isDome": dome,
                     "homeLineup": home_lineup,
                     "awayLineup": away_lineup,
+                    "hpUmp":     hp_ump,
                     "awayPitcher": {
                         "id": ap_raw.get("id"),
                         "name": ap_raw.get("fullName", "TBD"),
@@ -447,6 +464,7 @@ def fetch_batting_season_stats():
                 "OBP": float(stat.get("obp", ".000").replace(".","0.") if stat.get("obp") else 0),
                 "ISO": 0.0,  # calculated below
                 "hrPct": round((hr / g) * 100, 1) if g > 0 else 0,
+                "paPerG": round(int(stat.get("plateAppearances", 0) or 0) / g, 1) if g > 0 else 3.8,
             }
             avg = result[name]["AVG"]
             slg = result[name]["SLG"]
@@ -531,6 +549,149 @@ def fetch_pitcher_game_log(pitcher_id):
         print(f"[plog {pitcher_id}] Error: {e}")
         return {}
 
+def fetch_home_away_splits():
+    """Home/away HR and OPS splits for all batters"""
+    cached = cache_get("home_away_splits")
+    if cached: return cached
+    url = ("https://statsapi.mlb.com/api/v1/stats"
+           "?stats=homeAndAway&group=hitting&season=2026&sportId=1&limit=700")
+    try:
+        data = fetch(url)
+        result = {}
+        for group in data.get("stats", []):
+            for split in group.get("splits", []):
+                name = split.get("player", {}).get("fullName", "")
+                if not name: continue
+                is_home = split.get("split", {}).get("code", "").upper() == "H"
+                stat = split.get("stat", {})
+                g  = int(stat.get("gamesPlayed", 1) or 1)
+                hr = int(stat.get("homeRuns", 0) or 0)
+                def _f(k):
+                    v = stat.get(k, "0") or "0"
+                    try: return float(str(v).replace(".","0.",1) if str(v).startswith(".") else v)
+                    except: return 0.0
+                if name not in result: result[name] = {}
+                result[name]["home" if is_home else "away"] = {
+                    "G": g, "HR": hr,
+                    "hrPct": round((hr/g)*100,1) if g>0 else 0,
+                    "OPS": _f("ops"),
+                }
+        cache_set("home_away_splits", result)
+        print(f"[home_away] Loaded {len(result)} batters")
+        return result
+    except Exception as e:
+        print(f"[home_away] Error: {e}")
+        return {}
+
+def fetch_monthly_batting():
+    """Current-month batting stats for hot/cold month detection"""
+    et    = datetime.now(timezone(timedelta(hours=-4)))
+    month = et.month
+    cached = cache_get(f"monthly_{month}")
+    if cached: return cached
+    url = ("https://statsapi.mlb.com/api/v1/stats"
+           "?stats=byMonth&group=hitting&season=2026&sportId=1&limit=700")
+    try:
+        data = fetch(url)
+        result = {}
+        for group in data.get("stats", []):
+            for split in group.get("splits", []):
+                if str(split.get("split", {}).get("code", "")) != str(month): continue
+                name = split.get("player", {}).get("fullName", "")
+                if not name: continue
+                stat = split.get("stat", {})
+                g  = int(stat.get("gamesPlayed", 1) or 1)
+                hr = int(stat.get("homeRuns", 0) or 0)
+                def _f(k):
+                    v = stat.get(k, "0") or "0"
+                    try: return float(str(v).replace(".","0.",1) if str(v).startswith(".") else v)
+                    except: return 0.0
+                result[name] = {
+                    "G_month":      g,
+                    "HR_month":     hr,
+                    "hrPct_month":  round((hr/g)*100,1) if g>0 else 0,
+                    "OPS_month":    _f("ops"),
+                }
+        cache_set(f"monthly_{month}", result)
+        print(f"[monthly] Loaded {len(result)} batters")
+        return result
+    except Exception as e:
+        print(f"[monthly] Error: {e}")
+        return {}
+
+def fetch_team_bullpen_era():
+    """Team bullpen ERA — opponent bullpen quality affects late-game HR risk"""
+    cached = cache_get("bullpen_era")
+    if cached: return cached
+    url = ("https://statsapi.mlb.com/api/v1/stats"
+           "?stats=season&group=pitching&season=2026&sportId=1"
+           "&position=RP&limit=600")
+    try:
+        data = fetch(url)
+        team_er, team_ip = {}, {}
+        for split in data.get("stats", [{}])[0].get("splits", []):
+            abbr = split.get("team", {}).get("abbreviation", "")
+            team = TEAM_MAP.get(abbr, abbr)
+            stat = split.get("stat", {})
+            er   = float(stat.get("earnedRuns", 0) or 0)
+            ip   = float(stat.get("inningsPitched", 0) or 0)
+            team_er[team] = team_er.get(team, 0) + er
+            team_ip[team] = team_ip.get(team, 0) + ip
+        result = {t: round((team_er[t]/team_ip[t])*9,2) for t in team_er if team_ip.get(t,0)>0}
+        cache_set("bullpen_era", result)
+        print(f"[bullpen] Loaded {len(result)} teams")
+        return result
+    except Exception as e:
+        print(f"[bullpen] Error: {e}")
+        return {}
+
+def fetch_pitcher_savant_allowed():
+    """Pitcher Statcast allowed stats: barrel%, hard hit% against — better vuln signal"""
+    cached = cache_get("pitcher_savant_allowed")
+    if cached: return cached
+    url = (
+        "https://baseballsavant.mlb.com/leaderboard/statcast"
+        "?type=pitcher&year=2026&position=&team=&min=25&csv=true"
+    )
+    try:
+        req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/csv"})
+        with urlopen(req, timeout=15) as r:
+            raw = r.read().decode("utf-8")
+        lines = [l for l in raw.strip().split("\n") if l]
+        if len(lines) < 2: return {}
+        headers = lines[0].split(",")
+        result  = {}
+        for line in lines[1:]:
+            cols = line.split(",")
+            if len(cols) < len(headers): continue
+            row  = dict(zip(headers, cols))
+            name = row.get("player_name", "").strip()
+            if not name: continue
+            try:
+                result[name] = {
+                    "barrel_allowed":   float(row.get("barrel_batted_rate", 0) or 0),
+                    "hard_hit_allowed": float(row.get("hard_hit_percent", 0) or 0),
+                    "xwoba_against":    float(row.get("xwoba", 0) or 0),
+                    "xslg_against":     float(row.get("xslg", 0) or 0),
+                }
+            except: continue
+        cache_set("pitcher_savant_allowed", result)
+        print(f"[pitcher_sav] Loaded {len(result)} pitchers")
+        return result
+    except Exception as e:
+        print(f"[pitcher_sav] Error: {e}")
+        return {}
+
+def hr_probability(score):
+    """Map 0–99 composite score to estimated HR probability % per game.
+    Calibrated: score 35≈4%, 50≈8%, 65≈14%, 80≈21%, 90≈27%"""
+    import math
+    prob = 1.5 + (score / 99) ** 1.75 * 29.5
+    return round(max(1.0, min(32.0, prob)), 1)
+
+def ump_zone_adj(ump_name):
+    return UMP_ZONES.get(ump_name, 0.0)
+
 # ── SCORING ENGINE ────────────────────────────────────────────────────────────
 def wind_adj(wx):
     if wx.get("dome"): return 0
@@ -575,7 +736,7 @@ def pitcher_vuln(p_stats):
     return max(0, min(100, s))
 
 def pull_adj(bats, home_team):
-    pb = PULL_BONUS.get(home_team, {})
+    pb   = PULL_BONUS.get(home_team, {})
     side = "L" if bats in ("L", "S") else "R"
     return pb.get(side, 0)
 
@@ -583,23 +744,42 @@ def lineup_adj(pos):
     return LINEUP_BONUS.get(pos, 0)
 
 def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
-                   recent_stats=None, pitcher_log=None, lineup_pos=0, home_team=""):
-    hr_pct    = batter_stats.get("hrPct", 0)
-    ops       = batter_stats.get("OPS", 0)
-    slg       = batter_stats.get("SLG", 0)
-    iso       = batter_stats.get("ISO", 0)
-    barrel    = savant_stats.get("barrel_pct", 8)
-    hard_hit  = savant_stats.get("hard_hit_pct", 40)
-    sweet     = savant_stats.get("sweet_spot_pct", 36)
-    pull_pct  = savant_stats.get("pull_pct", 40)
-    bats      = batter_stats.get("bats", "R")
-    ph        = pitcher_stats.get("hand", "R")
+                   recent_stats=None, pitcher_log=None, lineup_pos=0, home_team="",
+                   home_away_splits=None, is_home=False,
+                   monthly_stats=None, bullpen_era=4.50,
+                   pitcher_sav=None, ump_score=0.0):
 
-    # ── Blend recent 15-day form (60%) with full season (40%) ─────────────────
+    hr_pct   = batter_stats.get("hrPct", 0)
+    ops      = batter_stats.get("OPS", 0)
+    slg      = batter_stats.get("SLG", 0)
+    iso      = batter_stats.get("ISO", 0)
+    pa_per_g = batter_stats.get("paPerG", 3.8)
+    barrel   = savant_stats.get("barrel_pct", 8)
+    hard_hit = savant_stats.get("hard_hit_pct", 40)
+    sweet    = savant_stats.get("sweet_spot_pct", 36)
+    pull_pct = savant_stats.get("pull_pct", 40)
+    bats     = batter_stats.get("bats", "R")
+    ph       = pitcher_stats.get("hand", "R")
+
+    # ── 1. Blend recent 15-day form (60/40 with season) ───────────────────────
     if recent_stats and recent_stats.get("G_recent", 0) >= 7:
         hr_pct = recent_stats["hrPct_recent"] * 0.60 + hr_pct * 0.40
         ops    = recent_stats["OPS_recent"]   * 0.55 + ops    * 0.45
         slg    = recent_stats["SLG_recent"]   * 0.55 + slg    * 0.45
+
+    # ── 2. Blend home/away split (35% weight, 15+ game minimum) ──────────────
+    if home_away_splits:
+        key   = "home" if is_home else "away"
+        split = home_away_splits.get(key, {})
+        if split.get("G", 0) >= 15 and split.get("hrPct", 0) > 0:
+            hr_pct = split["hrPct"] * 0.35 + hr_pct * 0.65
+            ops    = split["OPS"]   * 0.30 + ops    * 0.70
+
+    # ── 3. Blend current-month split (25% weight, 10+ game minimum) ──────────
+    if monthly_stats and monthly_stats.get("G_month", 0) >= 10:
+        m_hr = monthly_stats["hrPct_month"]
+        if m_hr > 0:
+            hr_pct = m_hr * 0.25 + hr_pct * 0.75
 
     s = 0
     s += min(hr_pct * 2.3, 27)
@@ -610,15 +790,19 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     s += min((iso - 0.180) * 18, 4)
     s += min((sweet - 36) * 0.2, 2)
 
-    # ── Pull factor — high pull% at short-porch parks ─────────────────────────
+    # ── 4. PA opportunity — more PA per game = more chances ───────────────────
+    if pa_per_g >= 4.5: s += 4
+    elif pa_per_g >= 4.2: s += 2
+    elif pa_per_g < 3.0: s -= 2
+
+    # ── 5. Pull factor — high pull% at short-porch parks ─────────────────────
     if pull_pct > 40:
         s += pull_adj(bats, home_team) * ((pull_pct - 38) / 22)
 
-    # ── Pitcher vulnerability — blend season ERA with last-3-start ERA ─────────
+    # ── 6. Pitcher vulnerability ───────────────────────────────────────────────
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
-        recent_era = pitcher_log["recent_era"]
-        era = recent_era * 0.60 + era * 0.40  # weight recent form heavier
+        era = pitcher_log["recent_era"] * 0.60 + era * 0.40
     fb  = pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
@@ -627,11 +811,21 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     if vel < 91: pv += 3
     if q == "danger": pv += 16
     if q == "elite":  pv -= 12
-    if pitcher_log and pitcher_log.get("fatigued"):      pv += 7
+    if pitcher_log and pitcher_log.get("fatigued"):          pv += 7
     if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
+    # Pitcher Savant allowed stats: barrel%/hard hit% they give up
+    if pitcher_sav:
+        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
+        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
     s += max(0, min(100, pv)) * 0.17
 
-    # ── Park, weather, platoon ─────────────────────────────────────────────────
+    # ── 7. Opponent bullpen ERA — late-game HR opportunity ────────────────────
+    if bullpen_era >= 5.20:   s += 4
+    elif bullpen_era >= 4.80: s += 2
+    elif bullpen_era >= 4.50: s += 1
+    elif bullpen_era < 3.50:  s -= 2
+
+    # ── 8. Park, weather, platoon ─────────────────────────────────────────────
     s += ((pf - 100) / 50) * 8
     s += wind_adj(wx) * 0.48
     s += temp_adj(wx.get("temp", 72))
@@ -639,7 +833,10 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     s += humid_adj(wx.get("humidity", 55))
     s += platoon_adj(bats, ph)
 
-    # ── Lineup position ────────────────────────────────────────────────────────
+    # ── 9. Umpire zone ────────────────────────────────────────────────────────
+    s += ump_score * 2.0
+
+    # ── 10. Lineup position ───────────────────────────────────────────────────
     s += lineup_adj(lineup_pos)
 
     return max(0, min(99, round(s)))
@@ -657,13 +854,30 @@ def build_daily_data(date_str):
     if cached: return cached
 
     print(f"[build] Fetching fresh data for {date_str}...")
-    games       = fetch_schedule(date_str)
-    batting     = fetch_batting_season_stats()
-    recent      = fetch_recent_batting_stats(15)
-    savant      = fetch_batting_stats_savant()
-    rosters     = fetch_active_rosters()
-    injuries    = fetch_injuries()
-    _, et_hour  = get_today_str()
+    # Fetch all independent data sources in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        f_games    = ex.submit(fetch_schedule, date_str)
+        f_batting  = ex.submit(fetch_batting_season_stats)
+        f_recent   = ex.submit(fetch_recent_batting_stats, 15)
+        f_savant   = ex.submit(fetch_batting_stats_savant)
+        f_rosters  = ex.submit(fetch_active_rosters)
+        f_injuries = ex.submit(fetch_injuries)
+        f_homeaway = ex.submit(fetch_home_away_splits)
+        f_monthly  = ex.submit(fetch_monthly_batting)
+        f_bullpen  = ex.submit(fetch_team_bullpen_era)
+        f_psav     = ex.submit(fetch_pitcher_savant_allowed)
+
+    games      = f_games.result()
+    batting    = f_batting.result()
+    recent     = f_recent.result()
+    savant     = f_savant.result()
+    rosters    = f_rosters.result()
+    injuries   = f_injuries.result()
+    home_away  = f_homeaway.result()
+    monthly    = f_monthly.result()
+    bullpen    = f_bullpen.result()
+    pitcher_sav_map = f_psav.result()
+    _, et_hour = get_today_str()
 
     # Enrich games with pitcher stats + weather + player projections
     for g in games:
@@ -682,19 +896,25 @@ def build_daily_data(date_str):
         wx = fetch_weather(home, hour)
         g["weather"] = wx
 
-        # Pitcher stats + recent game log
+        # Pitcher stats + recent game log + Savant allowed stats
+        ump_score = ump_zone_adj(g.get("hpUmp", ""))
         for side in ["awayPitcher", "homePitcher"]:
-            pid = g[side].get("id")
+            pid   = g[side].get("id")
+            name  = g[side].get("name", "")
             stats = fetch_pitcher_stats(pid) if pid else {}
             plog  = fetch_pitcher_game_log(pid) if pid else {}
+            psav  = pitcher_sav_map.get(name, {})
             g[side].update(stats)
-            g[side]["_log"] = plog
+            g[side]["_log"]  = plog
+            g[side]["_psav"] = psav
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
 
         pf = g["parkFactor"]
         home_lineup = g.get("homeLineup", [])
         away_lineup = g.get("awayLineup", [])
+        opp_bullpen_away = bullpen.get(g["away"], 4.50)  # bullpen of away team
+        opp_bullpen_home = bullpen.get(g["home"], 4.50)  # bullpen of home team
 
         # Build player projections for this game
         players = []
@@ -710,14 +930,19 @@ def build_daily_data(date_str):
             bat_stat = dict(batting.get(name, {}))
             if bat_stat.get("G", 0) < 5: continue
 
-            sav         = savant.get(name, {})
-            recent_stat = recent.get(name, {})
-            is_away     = team == g["away"]
-            opp_pitcher = g["homePitcher"] if is_away else g["awayPitcher"]
-            pitcher_log = opp_pitcher.get("_log", {})
-            pid         = roster_info.get("id")
-            lineup      = away_lineup if is_away else home_lineup
-            lineup_pos  = (lineup.index(pid) + 1) if pid and pid in lineup else 0
+            sav          = savant.get(name, {})
+            recent_stat  = recent.get(name, {})
+            ha_splits    = home_away.get(name, {})
+            month_stat   = monthly.get(name, {})
+            is_away      = team == g["away"]
+            is_home_game = not is_away
+            opp_pitcher  = g["homePitcher"] if is_away else g["awayPitcher"]
+            pitcher_log  = opp_pitcher.get("_log", {})
+            pitcher_sav  = opp_pitcher.get("_psav", {})
+            opp_bullpen  = opp_bullpen_home if is_away else opp_bullpen_away
+            pid          = roster_info.get("id")
+            lineup       = away_lineup if is_away else home_lineup
+            lineup_pos   = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
             bat_stat["bats"] = roster_info.get("bats", "R")
             score = calc_composite(
@@ -725,12 +950,22 @@ def build_daily_data(date_str):
                 recent_stats=recent_stat,
                 pitcher_log=pitcher_log,
                 lineup_pos=lineup_pos,
-                home_team=home
+                home_team=home,
+                home_away_splits=ha_splits,
+                is_home=is_home_game,
+                monthly_stats=month_stat,
+                bullpen_era=opp_bullpen,
+                pitcher_sav=pitcher_sav,
+                ump_score=ump_score,
             )
             tier = get_tier(score)
 
             recent_hr_pct = recent_stat.get("hrPct_recent", 0)
-            hot_streak    = recent_hr_pct > bat_stat.get("hrPct", 0) * 1.35 and recent_stat.get("G_recent", 0) >= 7
+            hot_streak    = (recent_hr_pct > bat_stat.get("hrPct", 0) * 1.35
+                             and recent_stat.get("G_recent", 0) >= 7)
+            month_hr_pct  = month_stat.get("hrPct_month", 0)
+            hot_month     = (month_hr_pct > bat_stat.get("hrPct", 0) * 1.25
+                             and month_stat.get("G_month", 0) >= 10)
 
             players.append({
                 "name":             name,
@@ -755,11 +990,19 @@ def build_daily_data(date_str):
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),
                 "pitcherHand":      opp_pitcher.get("hand", "R"),
                 "pitcherFatigued":  pitcher_log.get("fatigued", False),
+                "pitcherBarrelAllowed": round(pitcher_sav.get("barrel_allowed", 0), 1),
                 "lineupPos":        lineup_pos,
                 "confirmed":        lineup_pos > 0,
+                "isHome":           is_home_game,
                 "recentHR":         recent_stat.get("HR_recent", 0),
                 "recentHRPct":      recent_hr_pct,
+                "monthHRPct":       month_hr_pct,
                 "hotStreak":        hot_streak,
+                "hotMonth":         hot_month,
+                "oppBullpenEra":    opp_bullpen,
+                "hpUmp":            g.get("hpUmp", ""),
+                "umpScore":         ump_score,
+                "hrProb":           hr_probability(score),
                 "gameId":           g["id"],
                 "score":            score,
                 "tier":             tier,
@@ -943,7 +1186,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # ── STARTUP ───────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import webbrowser, os, sys
+    import webbrowser, sys
 
     local = HOST in ("0.0.0.0", "127.0.0.1")
     url = f"http://localhost:{PORT}" if local else f"http://{HOST}:{PORT}"

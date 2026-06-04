@@ -541,6 +541,8 @@ let tierF='all', matchF='all', handF='all', flagF='all', sortBy='score', searchQ
 let legs=[];
 let activeGames=[], activeWX={}, activeUMP={};
 let serverTop5=[], serverInjuries=[];
+let lineMoved = new Set(); // manual line-movement flags (session only)
+function toggleLineMoved(name){ lineMoved.has(name)?lineMoved.delete(name):lineMoved.add(name); }
 let currentDate = new Date();
 currentDate.setHours(0,0,0,0);
 let dataMode = 'loading'; // 'live' | 'cached' | 'error'
@@ -746,6 +748,14 @@ function buildGamePlayers(g){
         recentHR:         sp.recentHR        || 0,
         recentHRPct:      sp.recentHRPct     || 0,
         hotStreak:        sp.hotStreak       || false,
+        hotMonth:         sp.hotMonth        || false,
+        isHome:           sp.isHome          || false,
+        monthHRPct:       sp.monthHRPct      || 0,
+        oppBullpenEra:    sp.oppBullpenEra   || 4.50,
+        pitcherBarrelAllowed: sp.pitcherBarrelAllowed || 0,
+        hpUmp:            sp.hpUmp           || '',
+        umpScore:         sp.umpScore        || 0,
+        hrProb:           sp.hrProb          || 0,
         score:            sc,
         tier:             t,
         ml:               mlabel(sc),
@@ -931,6 +941,17 @@ function render(){
     const umpFavor=ump?ump.favor:0;
     const topPick=getGameTopPick(g);
     const wInline=windInline(wx), wAlert=windAlert(wx);
+    // Pull ump + bullpen from first server player if available
+    const sp0      = g.serverPlayers && g.serverPlayers[0];
+    const hpUmp    = sp0 ? sp0.hpUmp : '';
+    const umpScore = sp0 ? (sp0.umpScore||0) : 0;
+    const umpBadge = hpUmp
+      ? `<span class="bdg" style="background:${umpScore>0.5?'#0d2d1a':umpScore<-0.5?'#2d1515':'var(--cream)'};color:${umpScore>0.5?'var(--green)':umpScore<-0.5?'#f0654a':'var(--muted)'};border:1px solid ${umpScore>0.5?'#1a5a34':umpScore<-0.5?'#5a2020':'var(--rule)'}">⚖ ${hpUmp.split(' ').slice(-1)[0]}</span>`
+      : '';
+    const awBull = sp0 ? (sp0.oppBullpenEra||4.50) : 4.50;
+    const bullBadge = awBull >= 5.0
+      ? `<span class="bdg bhr">🔥 BULL ${awBull} ERA</span>`
+      : awBull >= 4.5 ? `<span class="bdg bav">BULL ${awBull}</span>` : '';
     html+=`
     <div class="gb">
       <div class="gbanner" onclick="toggleGame(this)">
@@ -948,8 +969,9 @@ function render(){
             <span class="bdg btmp">🌡${wx.t}°F</span>
             ${wx.rh?`<span class="bdg bhumid">💧${wx.rh}%RH</span>`:''}
             ${wx.baro&&wx.baro<1005?`<span class="bdg bpres">↓${wx.baro}hPa</span>`:''}
-            ${ump&&umpFavor>=0.8?`<span class="bdg" style="background:#f5f0ff;color:#7c3aed;border:1px solid #c0a0e0">⚖ ${ump.name}</span>`:''}
-            ${g._fromAPI?`<span class="bdg" style="background:#eaf5ef;color:var(--green);border:1px solid #80c890">● LIVE</span>`:''}
+            ${umpBadge}
+            ${bullBadge}
+            ${g._fromAPI?`<span class="bdg" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">● LIVE</span>`:''}
           </div>
         </div>
         <span class="gct">${pl.length} players</span><span class="gchv">›</span>
@@ -982,28 +1004,42 @@ function row(p){
   const wTxt=p.windAdj>0?`+${p.windAdj}`:p.windAdj<0?`${p.windAdj}`:'—';
   const wCls=p.windAdj>0?'wind-u':p.windAdj<0?'wind-d':'wind-n';
   const flags=[];
-  if(p.hotStreak)   flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT</span>`);
+  if(p.hotStreak)   flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT L15</span>`);
+  if(p.hotMonth && !p.hotStreak) flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">📅 HOT MO</span>`);
   if(p.confirmed && p.lineupPos>0) flags.push(`<span class="flag" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">#${p.lineupPos} ✓</span>`);
   if(!p.confirmed)  flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">LINEUP?</span>`);
+  if(p.isHome !== undefined) flags.push(`<span class="flag" style="background:var(--cream);color:var(--muted);border:1px solid var(--rule)">${p.isHome?'HOME':'AWAY'}</span>`);
   if(p.platoon>=8)  flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R✓</span>`);
   if(p.fat)         flags.push(`<span class="flag flag-fat">⚡ FAT</span>`);
-  if(p.lineMoved)   flags.push(`<span class="flag flag-lm">📈 LINE↑</span>`);
+  if(lineMoved.has(p.name)) flags.push(`<span class="flag flag-lm">📈 LINE↑</span>`);
+
   const recentLine = p.recentHRPct>0
-    ? `<span class="sc ${p.hotStreak?'pos':''}">L15: ${p.recentHRPct.toFixed(1)}% HR/G (${p.recentHR}HR)</span>`
+    ? `<span class="sc ${p.hotStreak?'pos':''}">L15: ${p.recentHRPct.toFixed(1)}%HR (${p.recentHR}HR)</span>`
+    : '';
+  const monthLine = p.monthHRPct>0
+    ? `<span class="sc ${p.hotMonth?'pos':''}">MO: ${p.monthHRPct.toFixed(1)}%HR</span>`
     : '';
   const pRecentEra = p.pitcherRecentEra && p.pitcherRecentEra !== p.pitcher.era
     ? `<span class="sc ${p.pitcherRecentEra>5?'pos':p.pitcherRecentEra<3?'neg':''}">P L3: ${p.pitcherRecentEra}ERA</span>`
     : '';
-  const fatBadge = p.pitcherFatigued ? `<span class="sc neg">P FATIGUED</span>` : '';
+  const fatBadge  = p.pitcherFatigued ? `<span class="sc neg">P FATIGUED</span>` : '';
+  const barrBadge = p.pitcherBarrelAllowed>=12 ? `<span class="sc pos">P BBL↑${p.pitcherBarrelAllowed}%</span>` : '';
+  const bullBadge = p.oppBullpenEra>=5.0 ? `<span class="sc pos">BULL ${p.oppBullpenEra}</span>` : '';
+  const umpBadge2 = p.umpScore>0.5 ? `<span class="sc pos">UMP+</span>` : p.umpScore<-0.5 ? `<span class="sc neg">UMP−</span>` : '';
+  const hrProbBadge = p.hrProb ? `<span class="sc neu">${p.hrProb}% HR</span>` : '';
+
   const scoreColor=p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--muted)';
-  const legData={name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel};
+  const legData={name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0};
   return `<tr class="pr${sel?' pk':''}" data-leg='${JSON.stringify(legData)}' onclick="handleRowClick(this)">
     <td><div class="pdot"></div></td>
-    <td><div class="pname">${p.name}</div><div class="psub">${p.team} · ${p.pos}${flags.join('')}</div></td>
+    <td>
+      <div class="pname">${p.name}</div>
+      <div class="psub">${p.team} · ${p.pos}${flags.join('')}</div>
+    </td>
     <td>
       <span class="mlb ${p.ml.c}">${p.ml.t}</span>
       <div class="psub" style="margin-top:2px">vs ${p.pitcher.n} · ${p.pitcher.era}ERA · ${p.pitcher.fb||38}%FB</div>
-      <div class="sbc">${recentLine}${pRecentEra}${fatBadge}</div>
+      <div class="sbc">${hrProbBadge}${recentLine}${monthLine}${pRecentEra}${fatBadge}${barrBadge}${bullBadge}${umpBadge2}</div>
     </td>
     <td class="pn hi">${p.HR}</td>
     <td class="pn ${p.hotStreak?'vg':'hi'}">${p.hrPct.toFixed(1)}%</td>
@@ -1012,8 +1048,11 @@ function row(p){
     <td class="pn ${p.chase<=25?'vg':p.chase>=34?'wa':''}">${p.chase.toFixed(1)}%</td>
     <td class="pn hi">.${String(Math.round(p.iso*1000)).padStart(3,'0')}</td>
     <td class="pn"><span class="${wCls}">${wTxt}</span></td>
-    <td class="pscore" style="color:${scoreColor}">${p.score}</td>
-    <td><span class="ptier t${p.tier}">${p.tier}</span></td>
+    <td class="pscore" style="color:${scoreColor}">${p.score}<div style="font-size:7px;color:var(--muted);font-weight:400;line-height:1">${p.hrProb?p.hrProb+'%':''}</div></td>
+    <td>
+      <span class="ptier t${p.tier}">${p.tier}</span>
+      <button onclick="event.stopPropagation();toggleLineMoved('${p.name.replace(/'/g,"\\'")}');render()" style="display:block;margin-top:3px;background:${lineMoved.has(p.name)?'var(--green)':'transparent'};color:${lineMoved.has(p.name)?'#010409':'#484f58'};border:1px solid ${lineMoved.has(p.name)?'var(--green)':'var(--rule)'};font-family:'Chivo Mono',monospace;font-size:6px;padding:1px 3px;border-radius:1px;cursor:pointer;letter-spacing:.5px;white-space:nowrap;" title="Mark line as moved toward this player">📈</button>
+    </td>
   </tr>`;
 }
 
