@@ -1397,8 +1397,8 @@
         transform: translateX(0);
       }
 
-      .pt th:nth-child(n+7),
-      .pr td:nth-child(n+7) {
+      .pt th:nth-child(n+5),
+      .pr td:nth-child(n+5) {
         display: none;
       }
 
@@ -2345,10 +2345,12 @@
         </div>
         <table class="pt">
           <thead><tr>
-            <th style="width:62px"></th><th>PLAYER</th><th>MATCHUP</th>
-            <th class="r">HR</th><th class="r">HR%</th><th class="r">BARREL%</th>
-            <th class="r">HH%</th><th class="r">CHASE%</th><th class="r">ISO</th>
-            <th class="r">WIND</th><th class="r">COMP</th><th></th>
+            <th style="width:62px"></th>
+            <th>PLAYER</th>
+            <th>MATCHUP</th>
+            <th class="r">HR</th>
+            <th class="r">BARREL</th>
+            <th class="r">SCORE</th>
           </tr></thead>
           <tbody>${pl.map(p => row(p)).join('')}</tbody>
         </table>
@@ -2359,83 +2361,54 @@
     }
 
     function row(p) {
-      const sel  = legs.find(l => l.name === p.name);
-      const wTxt = p.windAdj > 0 ? `+${p.windAdj}` : p.windAdj < 0 ? `${p.windAdj}` : '—';
-      const wCls = p.windAdj > 0 ? 'wind-u' : p.windAdj < 0 ? 'wind-d' : 'wind-n';
-
-      // Tier colors for card border
-      const tierColor = p.tier==='S'?'#3fb950':p.tier==='A'?'#e3b341':p.tier==='B'?'#c87000':p.tier==='C'?'#58a6ff':'#484f58';
+      const sel        = legs.find(l => l.name === p.name);
+      const tierColor  = p.tier==='S'?'#3fb950':p.tier==='A'?'#e3b341':p.tier==='B'?'#c87000':p.tier==='C'?'#58a6ff':'#484f58';
       const scoreColor = p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--muted)';
 
-      // Baseball card photo
-      const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/current/150x112/${p.mlbId}@2x.jpg` : '';
-      const photo = `
-        <div class="card-photo-wrap">
-          <div class="card-photo-bg" style="border-color:${tierColor}">
-            ⚾
-            ${photoUrl ? `<img src="${photoUrl}" alt="" onerror="this.style.display='none'">` : ''}
-          </div>
-          <div class="card-sel-dot"></div>
-        </div>`;
+      // Headshot — MLB retro CDN
+      const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg` : '';
+      const photo = `<div class="card-photo-wrap">
+        <div class="card-photo-bg" style="border-color:${tierColor}">⚾
+          ${photoUrl?`<img src="${photoUrl}" alt="" onerror="this.style.display='none'">`:''}</div>
+        <div class="card-sel-dot"></div>
+      </div>`;
 
-      // Flags
+      // Compact flags — only the 2 most important
       const flags = [];
-      if (p.hotStreak)                    flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT</span>`);
-      else if (p.hotMonth)                flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">📅 MO</span>`);
-      if (p.confirmed && p.lineupPos > 0) flags.push(`<span class="flag" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">#${p.lineupPos}✓</span>`);
-      else                                flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">?</span>`);
-      if (p.platoon >= 8)                 flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R</span>`);
-      if (p.fat)                          flags.push(`<span class="flag flag-fat">⚡</span>`);
-      if (lineMoved.has(p.name))          flags.push(`<span class="flag flag-lm">📈</span>`);
+      if (p.hotStreak)                       flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT</span>`);
+      if (p.confirmed && p.lineupPos > 0)    flags.push(`<span class="flag" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">#${p.lineupPos} ✓</span>`);
+      else if (!p.confirmed)                 flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">LINEUP?</span>`);
+      if (p.platoon >= 8)                    flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R ✓</span>`);
+      if (lineMoved.has(p.name))             flags.push(`<span class="flag flag-lm">📈 LINE</span>`);
 
-      // Stat chips
-      const recentLine  = p.recentHRPct > 0 ? `<span class="sc ${p.hotStreak?'pos':''}">L15 ${p.recentHRPct.toFixed(1)}%</span>` : '';
-      const monthLine   = p.monthHRPct  > 0 ? `<span class="sc ${p.hotMonth?'pos':''}">MO ${p.monthHRPct.toFixed(1)}%</span>` : '';
-      const pRecentEra  = p.pitcherRecentEra && p.pitcherRecentEra !== p.pitcher.era
-        ? `<span class="sc ${p.pitcherRecentEra>5?'pos':p.pitcherRecentEra<3?'neg':''}">P L3 ${p.pitcherRecentEra}</span>` : '';
-      const fatBadge    = p.pitcherFatigued ? `<span class="sc neg">P FAT</span>` : '';
-      const barrBadge   = p.pitcherBarrelAllowed >= 12 ? `<span class="sc pos">P BBL↑</span>` : '';
-      const bullBadge   = p.oppBullpenEra >= 5.0 ? `<span class="sc pos">BULL ${p.oppBullpenEra}</span>` : '';
-      const umpBadge2   = p.umpScore > 0.5 ? `<span class="sc pos">UMP+</span>` : p.umpScore < -0.5 ? `<span class="sc neg">UMP−</span>` : '';
-      const hrProbBadge = p.hrProb ? `<span class="sc neu">${p.hrProb}%</span>` : '';
-      const ppBadge     = p.ppLine != null ? `<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine}</span>` : '';
+      // Key intel under matchup — max 3 things
+      const intel = [];
+      if (p.hrProb)                          intel.push(`<span class="sc neu">${p.hrProb}% chance</span>`);
+      if (p.ppLine != null)                  intel.push(`<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine}</span>`);
+      if (p.pitcherFatigued)                 intel.push(`<span class="sc neg">P fatigued</span>`);
+      else if (p.pitcherBarrelAllowed >= 12) intel.push(`<span class="sc pos">P allows barrels</span>`);
+      if (p.oppBullpenEra >= 5.0)            intel.push(`<span class="sc pos">Weak bullpen</span>`);
 
       const legData = {name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0};
       return `<tr class="pr${sel?' pk':''}" data-leg='${JSON.stringify(legData)}' onclick="handleRowClick(this)">
-    <td style="padding:6px 4px 6px 6px">${photo}</td>
+    <td style="padding:5px 4px 5px 6px">${photo}</td>
     <td>
-      <div class="card-name-wrap">
-        <div>
-          <div class="pname" style="font-size:13px;line-height:1.1">${p.name}</div>
-          <div class="psub" style="margin-top:1px">
-            <span style="font-family:'Chivo Mono',monospace;font-size:8px;font-weight:700;color:${tierColor}">${p.team}</span>
-            <span style="color:var(--muted)"> · ${p.pos} · ${p.bats}HB</span>
-          </div>
-          <div style="display:flex;gap:2px;margin-top:2px;flex-wrap:wrap">${flags.join('')}</div>
-        </div>
+      <div class="pname">${p.name}</div>
+      <div class="psub">
+        <span style="font-weight:700;color:${tierColor}">${p.team}</span> · ${p.pos}
       </div>
+      <div style="display:flex;gap:2px;margin-top:3px;flex-wrap:wrap">${flags.join('')}</div>
     </td>
     <td>
-      <span class="mlb ${p.ml.c}">${p.ml.t}</span>
-      <div class="psub" style="margin-top:2px">vs ${p.pitcher.n} · ${p.pitcher.era}ERA</div>
-      <div class="sbc">${hrProbBadge}${ppBadge}${recentLine}${monthLine}${pRecentEra}${fatBadge}${barrBadge}${bullBadge}${umpBadge2}</div>
+      <div class="psub" style="font-weight:700;color:var(--ink)">vs ${p.pitcher.n}</div>
+      <div class="psub">${p.pitcher.era} ERA · ${p.pitcher.h}HP</div>
+      <div class="sbc" style="margin-top:3px">${intel.join('')}</div>
     </td>
-    <td class="pn hi">${p.HR}</td>
-    <td class="pn ${p.hotStreak?'vg':'hi'}">${p.hrPct.toFixed(1)}%</td>
-    <td class="pn ${p.barrel>=14?'vg':'hi'}">${p.barrel.toFixed(1)}%</td>
-    <td class="pn ${p.hardHit>=48?'vg':'hi'}">${p.hardHit.toFixed(1)}%</td>
-    <td class="pn ${p.chase<=25?'vg':p.chase>=34?'wa':''}">${p.chase.toFixed(1)}%</td>
-    <td class="pn hi">.${String(Math.round(p.iso*1000)).padStart(3,'0')}</td>
-    <td class="pn"><span class="${wCls}">${wTxt}</span></td>
-    <td class="pscore" style="color:${scoreColor};line-height:1">
-      ${p.score}
-      <div style="font-size:7px;color:var(--muted);font-weight:400;margin-top:1px">${p.hrProb?p.hrProb+'%':''}</div>
-    </td>
-    <td>
-      <span class="ptier t${p.tier}">${p.tier}</span>
-      <button onclick="event.stopPropagation();toggleLineMoved('${p.name.replace(/'/g,"\\'")}');render()"
-        style="display:block;margin-top:3px;background:${lineMoved.has(p.name)?'var(--green)':'transparent'};color:${lineMoved.has(p.name)?'#010409':'#484f58'};border:1px solid ${lineMoved.has(p.name)?'var(--green)':'var(--rule)'};font-family:'Chivo Mono',monospace;font-size:6px;padding:1px 3px;border-radius:1px;cursor:pointer;"
-        title="Mark line moved">📈</button>
+    <td class="pn ${p.hotStreak?'vg':'hi'}" style="font-size:13px">${p.HR}<div style="font-size:8px;color:var(--muted)">${p.hrPct.toFixed(1)}%</div></td>
+    <td class="pn ${p.barrel>=14?'vg':'hi'}" style="font-size:13px">${p.barrel.toFixed(1)}<div style="font-size:8px;color:var(--muted)">BBL%</div></td>
+    <td style="text-align:right;padding-right:10px">
+      <div style="font-family:'Chivo Mono',monospace;font-weight:700;font-size:24px;color:${scoreColor};line-height:1">${p.score}</div>
+      <span class="ptier t${p.tier}" style="margin-top:3px;display:inline-block">${p.tier}</span>
     </td>
   </tr>`;
     }
