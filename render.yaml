@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: diamond-hr-board
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 diamond_server.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
