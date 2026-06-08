@@ -961,32 +961,36 @@ def fetch_sprint_speed():
         print(f"[sprint_speed] Error: {e}")
         return {}
 
+def _savant_name(row):
+    """Convert Savant 'Last, First' name column to 'First Last'."""
+    raw = row.get("last_name, first_name", "").strip()
+    if not raw:
+        return row.get("player_name", "").strip()
+    parts = raw.split(", ", 1)
+    return f"{parts[1]} {parts[0]}" if len(parts) == 2 else raw
+
+
 def fetch_pitcher_arsenal():
     """Pitcher pitch mix and stats allowed per pitch type (Baseball Savant)."""
+    import csv as _csv, io as _io
     cached = cache_get("pitcher_arsenal", ttl=SPLITS_TTL)
     if cached: return cached
     url = ("https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats"
            "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
     try:
-        raw = fetch_savant(url)
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2: return {}
-        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        raw = fetch_savant(url).lstrip("﻿")
+        reader = _csv.DictReader(_io.StringIO(raw))
         result = {}
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(hdrs): continue
-            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
-            name = row.get("player_name","").strip()
-            pt   = row.get("pitch_type","").strip()
+        for row in reader:
+            name = _savant_name(row)
+            pt   = row.get("pitch_type", "").strip()
             if not name or not pt: continue
             if name not in result: result[name] = {}
-            pct_raw = row.get("pitch_percent") or row.get("p_throw_percent") or "0"
             try:
                 result[name][pt] = {
                     "name":           row.get("pitch_name", PITCH_TYPE_NAMES.get(pt, pt)),
-                    "pct":            _safe_float(pct_raw),
-                    "pa":             int(row.get("pa",0) or 0),
+                    "pct":            _safe_float(row.get("pitch_usage") or row.get("pitch_percent") or 0),
+                    "pa":             int(row.get("pa", 0) or 0),
                     "ba_against":     _safe_float(row.get("ba")),
                     "xslg_against":   _safe_float(row.get("est_slg")),
                     "hard_hit_allow": _safe_float(row.get("hard_hit_percent")),
@@ -1053,29 +1057,25 @@ def fetch_batter_spray(batter_id):
 
 
 def fetch_batter_pitch_stats():
-    """Batter performance stats vs each pitch type (Baseball Savant)."""
+    """Batter performance vs each pitch type (Baseball Savant)."""
+    import csv as _csv, io as _io
     cached = cache_get("batter_pitch_stats", ttl=SPLITS_TTL)
     if cached: return cached
     url = ("https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats"
            "?type=batter&year=2026&position=&team=&min=10&csv=true")
     try:
-        raw = fetch_savant(url)
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2: return {}
-        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        raw = fetch_savant(url).lstrip("﻿")
+        reader = _csv.DictReader(_io.StringIO(raw))
         result = {}
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(hdrs): continue
-            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
-            name = row.get("player_name","").strip()
-            pt   = row.get("pitch_type","").strip()
+        for row in reader:
+            name = _savant_name(row)
+            pt   = row.get("pitch_type", "").strip()
             if not name or not pt: continue
             if name not in result: result[name] = {}
             try:
                 result[name][pt] = {
                     "name":     row.get("pitch_name", PITCH_TYPE_NAMES.get(pt, pt)),
-                    "pa":       int(row.get("pa",0) or 0),
+                    "pa":       int(row.get("pa", 0) or 0),
                     "ba":       _safe_float(row.get("ba")),
                     "slg":      _safe_float(row.get("slg")),
                     "xslg":     _safe_float(row.get("est_slg")),
