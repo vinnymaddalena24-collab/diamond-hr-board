@@ -583,7 +583,7 @@ function showNoServer(msg) {
 }
 
 function refreshData() {
-  with(_cache = {}) {} // won't work from client, just reload
+  fetch(`${API_BASE}/api/refresh`).catch(()=>{});
   loadDay(currentDate);
 }
 
