@@ -302,6 +302,9 @@ table.pt th.c{text-align:center}
 .df-src{display:flex;align-items:center;gap:5px}
 .df-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
 
+.pm-row{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
+.pm-chip{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;white-space:nowrap}
+
 /* ── RESPONSIVE ── */
 @media(max-width:900px){.slip{display:none}}
 @media(max-width:680px){
@@ -499,6 +502,20 @@ function computeEdges(p, g) {
   if(p.umpScore >= 1.0) edges.push({l:'UMP TIGHT', t:'pos'});
   // Barrel power
   if(p.barrel >= 15) edges.push({l:`${p.barrel.toFixed(0)}% BBL`, t:'dat'});
+  // Travel jet lag
+  if(p.travelAdj <= -2) edges.push({l:'✈ JET LAG', t:'neg'});
+  else if(p.travelAdj <= -1) edges.push({l:'✈ TRAVEL', t:'neg'});
+  // Spray/park
+  if(p.sprayAdj >= 4) edges.push({l:'🏟 PULL PARK', t:'pos'});
+  // Pitch matchup top insight
+  if(p.pitchMatchup && p.pitchMatchup.length) {
+    const top = p.pitchMatchup.find(m => m.verdict === 'CRUSHES' && m.pct >= 20);
+    if(top) edges.push({l:`CRUSHES ${top.name.split(' ')[0]}`, t:'pos'});
+    else {
+      const bad = p.pitchMatchup.find(m => m.verdict === 'STRUGGLES' && m.pct >= 20);
+      if(bad) edges.push({l:`WEAK vs ${bad.name.split(' ')[0]}`, t:'neg'});
+    }
+  }
   // PrizePicks
   if(p.ppLine != null) edges.push({l:`PP ${p.ppLine}`, t:'inf'});
   // Confirmed in lineup
@@ -613,7 +630,11 @@ function buildPlayers(g) {
       hpUmp: sp.hpUmp||'', umpScore: sp.umpScore||0,
       gameTotal: sp.gameTotal||0, ppLine: sp.ppLine??null, ppType: sp.ppType||'',
       sprintSpeed: sp.sprintSpeed||null, hrProb: sp.hrProb||0,
-      h2h: sp.h2h||null, platoon: platAdj(sp.bats||'R', pitcher.h),
+      h2h: sp.h2h||null,
+      pitchMatchup: sp.pitchMatchup || [],
+      travelAdj:    sp.travelAdj    || 0,
+      sprayAdj:     sp.sprayAdj     || 0,
+      platoon: platAdj(sp.bats||'R', pitcher.h),
       score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),
       gameId: g.id,
     };
@@ -870,6 +891,15 @@ function playerRow(p, g) {
     <div class="vs-pitcher">vs ${p.pitcher.n}</div>
     <div class="vs-era" style="color:${['danger','mid','elite'].includes(eraClass(p.pitcher.era))?{danger:'var(--red)',mid:'var(--amber)',elite:'var(--green)'}[eraClass(p.pitcher.era)]:'var(--sub)'}">${p.pitcher.era.toFixed(2)} ERA · ${p.pitcher.h}HP</div>
     ${h2hHtml}
+    ${p.pitchMatchup && p.pitchMatchup.length ? `
+    <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;">
+      ${p.pitchMatchup.slice(0,3).map(m => {
+        const c = m.verdict==='CRUSHES'?'#10B981':m.verdict==='STRONG'?'#F59E0B':m.verdict==='STRUGGLES'?'#EF4444':'#475569';
+        const bg = m.verdict==='CRUSHES'?'rgba(16,185,129,.1)':m.verdict==='STRUGGLES'?'rgba(239,68,68,.1)':'rgba(71,85,105,.1)';
+        const xslgTxt = m.xslg ? ` .${String(Math.round(m.xslg*1000)).padStart(3,'0')} xSLG` : '';
+        return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap" title="${m.pa>0?m.pa+' PA vs this pitch':''}">${m.name.split(' ')[0]} ${m.pct}%${xslgTxt}</span>`;
+      }).join('')}
+    </div>` : ''}
   </td>
   <td class="td-num r">
     <span class="big${p.hotStreak?' hi-green':''}">${p.HR}</span>

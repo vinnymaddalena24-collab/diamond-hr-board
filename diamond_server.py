@@ -62,6 +62,43 @@ MLB_TEAM_IDS = {
 # Reverse map: team numeric ID → our abbreviation (used when API omits abbreviation)
 TEAM_ID_TO_ABBR = {v: k for k, v in MLB_TEAM_IDS.items()}
 
+PITCH_TYPE_NAMES = {
+    "FF":"4-Seam FB","FT":"2-Seam FB","SI":"Sinker","FC":"Cutter",
+    "SL":"Slider","ST":"Sweeper","SV":"Slurve","KC":"Knuckle-Curve",
+    "CU":"Curveball","CS":"Slow Curve","CH":"Changeup","FS":"Split-Finger",
+    "FO":"Forkball","KN":"Knuckleball","SC":"Screwball","EP":"Eephus",
+}
+
+# Home-city timezone for travel adjustment (ET=0, CT=1, MT=2, PT=3)
+VENUE_TIMEZONES = {
+    "NYY":"ET","NYM":"ET","BOS":"ET","BAL":"ET","TOR":"ET","PHI":"ET",
+    "WSH":"ET","ATL":"ET","MIA":"ET","CLE":"ET","DET":"ET","PIT":"ET","TBR":"ET",
+    "CWS":"CT","MIN":"CT","KC":"CT","STL":"CT","CHC":"CT","MIL":"CT","HOU":"CT","TEX":"CT",
+    "COL":"MT","ARI":"MT",
+    "LAD":"PT","LAA":"PT","SF":"PT","SEA":"PT","SD":"PT","ATH":"PT",
+}
+TZ_OFFSET = {"ET":0,"CT":1,"MT":2,"PT":3}
+
+# (LF, LCF, CF, RCF, RF, LF_wall_height, RF_wall_height)
+PARK_DIMENSIONS = {
+    "NYY":(318,399,408,385,314,8,8),"BOS":(310,379,420,380,302,37,3),
+    "CHC":(355,368,400,368,353,11,11),"PHI":(329,374,401,369,330,6,13),
+    "CIN":(328,365,404,370,325,12,12),"HOU":(315,362,409,373,326,21,7),
+    "TEX":(332,390,407,390,325,8,8),"COL":(347,390,415,375,350,8,8),
+    "NYM":(335,358,408,380,330,8,8),"BAL":(333,364,410,373,320,7,7),
+    "ATL":(335,375,400,375,325,8,8),"STL":(336,375,400,390,335,8,11),
+    "MIL":(344,370,400,374,345,8,8),"LAD":(330,375,395,375,330,8,8),
+    "SF":(339,364,399,421,309,8,25),"SD":(336,367,396,378,322,8,8),
+    "SEA":(331,378,401,381,326,8,8),"PIT":(325,383,399,375,320,6,21),
+    "CLE":(325,375,405,375,325,8,8),"DET":(345,370,420,365,330,8,8),
+    "TOR":(328,375,400,375,328,8,8),"MIN":(339,377,411,403,328,8,8),
+    "KC":(330,375,410,390,330,9,9),"TBR":(315,370,404,370,322,10,9),
+    "LAA":(330,386,400,365,330,8,8),"MIA":(344,386,416,392,335,20,9),
+    "WSH":(336,377,402,370,335,8,8),"CWS":(330,375,400,375,335,8,8),
+    "ARI":(330,376,407,376,335,9,9),"ATH":(330,375,400,367,325,8,8),
+    "CHC":(355,368,400,368,353,11,11),
+}
+
 # Stadium coordinates for weather (home team → lat/lng)
 # Stadium coordinates for weather (home team → lat/lng)
 STADIUM_COORDS = {
@@ -880,6 +917,88 @@ def fetch_sprint_speed():
         print(f"[sprint_speed] Error: {e}")
         return {}
 
+def fetch_pitcher_arsenal():
+    """Pitcher pitch mix and stats allowed per pitch type (Baseball Savant)."""
+    cached = cache_get("pitcher_arsenal", ttl=SPLITS_TTL)
+    if cached: return cached
+    url = ("https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats"
+           "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
+    try:
+        raw = fetch_savant(url)
+        lines = [l for l in raw.strip().split("\n") if l]
+        if len(lines) < 2: return {}
+        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        result = {}
+        for line in lines[1:]:
+            cols = line.split(",")
+            if len(cols) < len(hdrs): continue
+            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
+            name = row.get("player_name","").strip()
+            pt   = row.get("pitch_type","").strip()
+            if not name or not pt: continue
+            if name not in result: result[name] = {}
+            pct_raw = row.get("pitch_percent") or row.get("p_throw_percent") or "0"
+            try:
+                result[name][pt] = {
+                    "name":           row.get("pitch_name", PITCH_TYPE_NAMES.get(pt, pt)),
+                    "pct":            _safe_float(pct_raw),
+                    "pa":             int(row.get("pa",0) or 0),
+                    "ba_against":     _safe_float(row.get("ba")),
+                    "xslg_against":   _safe_float(row.get("est_slg")),
+                    "hard_hit_allow": _safe_float(row.get("hard_hit_percent")),
+                    "whiff_pct":      _safe_float(row.get("whiff_percent")),
+                    "run_val_100":    _safe_float(row.get("run_value_per_100")),
+                }
+            except: continue
+        cache_set("pitcher_arsenal", result)
+        print(f"[pitcher_arsenal] {len(result)} pitchers loaded")
+        return result
+    except Exception as e:
+        print(f"[pitcher_arsenal] Error: {e}")
+        return {}
+
+
+def fetch_batter_pitch_stats():
+    """Batter performance stats vs each pitch type (Baseball Savant)."""
+    cached = cache_get("batter_pitch_stats", ttl=SPLITS_TTL)
+    if cached: return cached
+    url = ("https://baseballsavant.mlb.com/leaderboard/pitch-arsenal-stats"
+           "?type=batter&year=2026&position=&team=&min=10&csv=true")
+    try:
+        raw = fetch_savant(url)
+        lines = [l for l in raw.strip().split("\n") if l]
+        if len(lines) < 2: return {}
+        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        result = {}
+        for line in lines[1:]:
+            cols = line.split(",")
+            if len(cols) < len(hdrs): continue
+            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
+            name = row.get("player_name","").strip()
+            pt   = row.get("pitch_type","").strip()
+            if not name or not pt: continue
+            if name not in result: result[name] = {}
+            try:
+                result[name][pt] = {
+                    "name":     row.get("pitch_name", PITCH_TYPE_NAMES.get(pt, pt)),
+                    "pa":       int(row.get("pa",0) or 0),
+                    "ba":       _safe_float(row.get("ba")),
+                    "slg":      _safe_float(row.get("slg")),
+                    "xslg":     _safe_float(row.get("est_slg")),
+                    "xwoba":    _safe_float(row.get("est_woba")),
+                    "hard_hit": _safe_float(row.get("hard_hit_percent")),
+                    "whiff":    _safe_float(row.get("whiff_percent")),
+                    "k_pct":    _safe_float(row.get("k_percent")),
+                }
+            except: continue
+        cache_set("batter_pitch_stats", result)
+        print(f"[batter_pitch_stats] {len(result)} batters loaded")
+        return result
+    except Exception as e:
+        print(f"[batter_pitch_stats] Error: {e}")
+        return {}
+
+
 def fetch_game_totals(date_str):
     """O/U game totals from The Odds API — run environment signal.
     Requires ODDS_API_KEY env var (free at the-odds-api.com, 500 req/mo)."""
@@ -1073,12 +1192,102 @@ def h2h_adj(h2h):
     return adj
 
 
+def calc_pitch_matchup(pitcher_name, batter_name, pitcher_arsenal, batter_pitch_stats):
+    """
+    Score adjustment + breakdown for batter vs pitcher's actual pitch mix.
+    Returns (score_adj, matchup_list).
+    matchup_list: [{pt, name, pct, pa, xslg, hard_hit, whiff, adj, verdict}]
+    """
+    LEAGUE_XSLG = 0.385
+    p_pitches = pitcher_arsenal.get(pitcher_name, {})
+    b_stats   = batter_pitch_stats.get(batter_name, {})
+    if not p_pitches:
+        return 0, []
+
+    matchup = []
+    total_adj = 0.0
+
+    for pt, p_data in sorted(p_pitches.items(), key=lambda x: x[1].get("pct",0), reverse=True)[:5]:
+        pct = p_data.get("pct", 0)
+        if pct < 5: continue
+        b = b_stats.get(pt, {})
+        pa = b.get("pa", 0)
+        if pa >= 5:
+            xslg  = b.get("xslg", LEAGUE_XSLG)
+            hh    = b.get("hard_hit", 35)
+            whiff = b.get("whiff", 25)
+            xslg_edge = xslg - LEAGUE_XSLG
+            hh_edge   = (hh - 35) * 0.02
+            whiff_pen = (whiff - 25) * 0.012
+            pitch_adj = (xslg_edge * 14 + hh_edge - whiff_pen) * (pct / 100) * 1.8
+            total_adj += pitch_adj
+            verdict = ("CRUSHES" if xslg >= 0.500 else
+                       "STRONG"  if xslg >= 0.420 else
+                       "NEUTRAL" if xslg >= 0.320 else "STRUGGLES")
+        else:
+            xslg  = None
+            hh    = None
+            whiff = None
+            pitch_adj = 0
+            verdict = "NO DATA"
+
+        matchup.append({
+            "pt":       pt,
+            "name":     p_data.get("name", PITCH_TYPE_NAMES.get(pt, pt)),
+            "pct":      round(pct),
+            "pa":       pa,
+            "xslg":     round(xslg, 3) if xslg is not None else None,
+            "hard_hit": round(hh, 1)   if hh    is not None else None,
+            "whiff":    round(whiff, 1) if whiff is not None else None,
+            "adj":      round(pitch_adj, 1),
+            "verdict":  verdict,
+        })
+
+    return round(max(-8, min(10, total_adj))), matchup
+
+
+def calc_travel_adj(away_team, home_team):
+    """
+    Jet-lag penalty for away team crossing timezones.
+    Eastward travel (losing hours) is hardest; westward is slight benefit.
+    """
+    away_tz = TZ_OFFSET.get(VENUE_TIMEZONES.get(away_team, "ET"), 0)
+    home_tz = TZ_OFFSET.get(VENUE_TIMEZONES.get(home_team, "ET"), 0)
+    # negative diff = eastward travel (harder), positive = westward (easier)
+    diff = home_tz - away_tz
+    if diff <= -2: return -3
+    if diff == -1: return -1
+    if diff >= 2:  return  1
+    return 0
+
+
+def calc_spray_park_adj(bats, home_team, pull_pct):
+    """
+    Enhanced pull/spray angle vs actual park wall distances.
+    LHB pulls to RF; RHB pulls to LF.
+    """
+    dims = PARK_DIMENSIONS.get(home_team)
+    if not dims:
+        pb = PULL_BONUS.get(home_team, {})
+        return pb.get("L" if bats in ("L","S") else "R", 0)
+    lf, lcf, cf, rcf, rf, lf_h, rf_h = dims
+    if bats in ("L", "S"):
+        target_dist, target_wall = rf, rf_h
+    else:
+        target_dist, target_wall = lf, lf_h
+    dist_bonus = max(0, (340 - target_dist) / 10)
+    wall_bonus = max(0, (12 - target_wall) / 6)
+    pull_factor = max(0, (pull_pct - 35) / 25)
+    return round((dist_bonus + wall_bonus) * pull_factor * 0.8)
+
+
 def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    recent_stats=None, pitcher_log=None, lineup_pos=0, home_team="",
                    home_away_splits=None, is_home=False,
                    monthly_stats=None, bullpen_era=4.50,
                    pitcher_sav=None, ump_score=0.0, game_total=0.0,
-                   h2h=None):
+                   h2h=None,
+                   pitch_matchup_adj=0, travel_adj_val=0):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -1124,8 +1333,8 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     if pa_per_g >= 4.5: profile += 3
     elif pa_per_g >= 4.2: profile += 2
     elif pa_per_g < 3.0: profile -= 2
-    if pull_pct > 40:
-        profile += pull_adj(bats, home_team) * ((pull_pct - 38) / 22)
+    if pull_pct > 35:
+        profile += calc_spray_park_adj(bats, home_team, pull_pct)
 
     # ── SITUATION: today's opportunity (increased weights — this is where VALUE hides)
     era = pitcher_stats.get("era", 4.50)
@@ -1161,7 +1370,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    return max(0, min(99, round(profile + situ + h2h_adj(h2h))))
+    return max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + travel_adj_val)))
 
 
 def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
@@ -1269,6 +1478,8 @@ def build_daily_data(date_str):
         f_pitcher_details = ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
         f_active = {team: ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
         f_h2h    = {pid: ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
+        f_p_arsenal    = ex.submit(fetch_pitcher_arsenal)
+        f_b_pitch      = ex.submit(fetch_batter_pitch_stats)
 
     # Collect results safely
     def safe(f):
@@ -1297,6 +1508,8 @@ def build_daily_data(date_str):
         try: active_rosters[team] = f.result() or set()
         except: active_rosters[team] = set()
     h2h_maps = {pid: (safe(f) or {}) for pid, f in f_h2h.items()}
+    pitcher_arsenal   = safe(f_p_arsenal)
+    batter_pitch_data = safe(f_b_pitch)
     _, et_hour = get_today_str()
 
     # ── Step 3: Assign pre-fetched data to games (zero network calls) ─────────
@@ -1371,6 +1584,13 @@ def build_daily_data(date_str):
             # Career batter vs pitcher H2H matchup stats
             opp_pid = opp_pitcher.get("id")
             h2h = h2h_maps.get(opp_pid, {}).get(name, {}) if opp_pid else {}
+            # Pitch type matchup: batter's history vs pitcher's arsenal
+            p_adj, pitch_matchup = calc_pitch_matchup(
+                opp_pitcher.get("name",""), name, pitcher_arsenal, batter_pitch_data)
+            # Travel jet-lag adjustment for away team
+            t_adj = calc_travel_adj(g["away"], g["home"]) if is_away else 0
+            # Enhanced spray angle adjustment using real park dimensions
+            spray = calc_spray_park_adj(roster_info.get("bats","R"), home, sav.get("pull_pct",40))
             score = calc_composite(
                 bat_stat, sav, opp_pitcher, pf, wx,
                 recent_stats=recent_stat,
@@ -1385,6 +1605,8 @@ def build_daily_data(date_str):
                 ump_score=ump_score,
                 game_total=game_total,
                 h2h=h2h,
+                pitch_matchup_adj=p_adj,
+                travel_adj_val=t_adj,
             )
             tier = get_tier(score)
 
@@ -1437,6 +1659,9 @@ def build_daily_data(date_str):
                 "sprintSpeed":      sprint_speed.get(name, None),
                 "hrProb":           hr_probability(score),
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
+                "pitchMatchup":     pitch_matchup if pitch_matchup else [],
+                "travelAdj":        t_adj,
+                "sprayAdj":         spray,
                 "gameId":           g["id"],
                 "score":            score,
                 "tier":             tier,
