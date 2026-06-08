@@ -1069,7 +1069,6 @@ function renderGameDetail(g, players) {
           <th class="r" onclick="setSort('barrel')">BARREL <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
           <th>EDGES</th>
           <th class="r" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
-          <th></th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -1144,11 +1143,8 @@ function playerRow(p, g) {
     <span class="tier-badge t${p.tier}">${p.tier}</span>
     <div class="prob-bar"><div class="prob-fill" style="width:${probWidth}%"></div></div>
   </td>
-  <td class="td-act">
-    <button class="star-btn${isTgt?' on':''}" onclick="event.stopPropagation();toggleTarget('${p.name.replace(/'/g,"&#39;").replace(/"/g,'&quot;')}')" title="${isTgt?'Remove target':'Add to targets'}">★</button>
-    <button class="add-btn${sel?' added':''}" onclick="event.stopPropagation();toggleLeg(JSON.parse(this.closest('tr').dataset.leg))">${sel?'✓ IN':'+ ADD'}</button>
   </td>
-</tr>`;
+</tr>${sprayRowHtml}`;
 }
 
 // ═══════════════════════════════════════════════════
