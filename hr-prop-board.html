@@ -126,9 +126,11 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .gc-mini-name{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gc-mini-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:1px}
 .gc-mini-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;line-height:1;flex-shrink:0}
-.gc-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-top:1px solid var(--border);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px;transition:color .1s;user-select:none}
-.gc-footer:hover{color:var(--blue)}
-.gc-chev{transition:transform .2s;font-size:10px}
+.gc-footer{display:flex;align-items:center;justify-content:space-between;padding:0;border-top:1px solid var(--border);cursor:pointer;user-select:none;transition:background .12s}
+.gc-footer:hover{background:rgba(59,130,246,.06)}
+.gc-footer-btn{width:100%;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--blue);transition:color .12s}
+.gc-footer:hover .gc-footer-btn{color:#60a5fa}
+.gc-chev{transition:transform .2s;font-size:11px}
 .gc-chev.open{transform:rotate(180deg)}
 
 /* ── GAME DETAIL (expanded) ── */
@@ -551,8 +553,7 @@ async function loadDay(dateObj) {
     setStatus('live','LIVE');
     document.getElementById('dataFooter').style.display = '';
     document.getElementById('footerTimestamp').textContent = `Updated ${new Date().toLocaleTimeString()}`;
-    // Auto-expand all games so players are immediately visible
-    expandedGames = new Set(activeGames.map(g => g.id));
+    expandedGames = new Set(); // collapsed by default — click SHOW MORE to expand
     render();
     autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
   } catch(err) {
@@ -754,8 +755,11 @@ function renderGameCard(g) {
       <div class="gc-picks-row">${topPicks.map(p=>miniPickHtml(p,g)).join('')}</div>
     </div>
     <div class="gc-footer" onclick="toggleGame('${g.id}')">
-      <span>▼ ${allPlayers.length} PLAYERS${filtered.length<allPlayers.length?' · '+filtered.length+' MATCH':''}</span>
-      <span class="gc-chev${isExp?' open':''}">▼</span>
+      <div class="gc-footer-btn">
+        <span class="gc-chev${isExp?' open':''}">▼</span>
+        ${isExp ? `HIDE PLAYERS` : `SHOW ${allPlayers.length} PLAYERS`}
+        <span class="gc-chev${isExp?' open':''}">▼</span>
+      </div>
     </div>
     ${isExp ? renderGameDetail(g, filtered) : ''}
   </div>`;
@@ -1093,7 +1097,7 @@ document.getElementById('filterBar').addEventListener('click', e => {
   activeTab = b.dataset.tab;
   document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on','on-g'));
   b.classList.add('on');
-  expandedGames = new Set(activeGames.map(g=>g.id)); // re-expand all on tab change
+  expandedGames = new Set(); // collapse all on tab change
   render();
 });
 
