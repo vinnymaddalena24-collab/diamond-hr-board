@@ -502,9 +502,6 @@ function computeEdges(p, g) {
   if(p.umpScore >= 1.0) edges.push({l:'UMP TIGHT', t:'pos'});
   // Barrel power
   if(p.barrel >= 15) edges.push({l:`${p.barrel.toFixed(0)}% BBL`, t:'dat'});
-  // Travel jet lag
-  if(p.travelAdj <= -2) edges.push({l:'✈ JET LAG', t:'neg'});
-  else if(p.travelAdj <= -1) edges.push({l:'✈ TRAVEL', t:'neg'});
   // Spray/park
   if(p.sprayAdj >= 4) edges.push({l:'🏟 PULL PARK', t:'pos'});
   // Pitch matchup top insight
@@ -632,7 +629,6 @@ function buildPlayers(g) {
       sprintSpeed: sp.sprintSpeed||null, hrProb: sp.hrProb||0,
       h2h: sp.h2h||null,
       pitchMatchup: sp.pitchMatchup || [],
-      travelAdj:    sp.travelAdj    || 0,
       sprayAdj:     sp.sprayAdj     || 0,
       platoon: platAdj(sp.bats||'R', pitcher.h),
       score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),

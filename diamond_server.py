@@ -1246,20 +1246,6 @@ def calc_pitch_matchup(pitcher_name, batter_name, pitcher_arsenal, batter_pitch_
     return round(max(-8, min(10, total_adj))), matchup
 
 
-def calc_travel_adj(away_team, home_team):
-    """
-    Jet-lag penalty for away team crossing timezones.
-    Eastward travel (losing hours) is hardest; westward is slight benefit.
-    """
-    away_tz = TZ_OFFSET.get(VENUE_TIMEZONES.get(away_team, "ET"), 0)
-    home_tz = TZ_OFFSET.get(VENUE_TIMEZONES.get(home_team, "ET"), 0)
-    # negative diff = eastward travel (harder), positive = westward (easier)
-    diff = home_tz - away_tz
-    if diff <= -2: return -3
-    if diff == -1: return -1
-    if diff >= 2:  return  1
-    return 0
-
 
 def calc_spray_park_adj(bats, home_team, pull_pct):
     """
@@ -1287,7 +1273,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    monthly_stats=None, bullpen_era=4.50,
                    pitcher_sav=None, ump_score=0.0, game_total=0.0,
                    h2h=None,
-                   pitch_matchup_adj=0, travel_adj_val=0):
+                   pitch_matchup_adj=0):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -1370,7 +1356,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    return max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + travel_adj_val)))
+    return max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj)))
 
 
 def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
@@ -1587,8 +1573,6 @@ def build_daily_data(date_str):
             # Pitch type matchup: batter's history vs pitcher's arsenal
             p_adj, pitch_matchup = calc_pitch_matchup(
                 opp_pitcher.get("name",""), name, pitcher_arsenal, batter_pitch_data)
-            # Travel jet-lag adjustment for away team
-            t_adj = calc_travel_adj(g["away"], g["home"]) if is_away else 0
             # Enhanced spray angle adjustment using real park dimensions
             spray = calc_spray_park_adj(roster_info.get("bats","R"), home, sav.get("pull_pct",40))
             score = calc_composite(
@@ -1606,7 +1590,6 @@ def build_daily_data(date_str):
                 game_total=game_total,
                 h2h=h2h,
                 pitch_matchup_adj=p_adj,
-                travel_adj_val=t_adj,
             )
             tier = get_tier(score)
 
@@ -1660,7 +1643,6 @@ def build_daily_data(date_str):
                 "hrProb":           hr_probability(score),
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
                 "pitchMatchup":     pitch_matchup if pitch_matchup else [],
-                "travelAdj":        t_adj,
                 "sprayAdj":         spray,
                 "gameId":           g["id"],
                 "score":            score,
