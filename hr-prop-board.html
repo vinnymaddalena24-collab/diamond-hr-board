@@ -581,16 +581,38 @@ function buildSprayInner(player, events) {
       <div class="spray-stat"><span class="v">${player.avgEV>0?player.avgEV.toFixed(1)+'mph':'—'}</span><span class="l">AVG EV</span></div>
       <div class="spray-stat"><span class="v" style="color:${sc(player.xwOBA,.380,.320)}">${player.xwOBA>0?'.'+String(Math.round(player.xwOBA*1000)).padStart(3,'0'):'—'}</span><span class="l">xwOBA</span></div>
     </div>` : '';
-  const hitRows = hitList.slice(0,8).map(h=>{
-    const tc = h.event==='home_run'?'#F59E0B':h.event==='double'||h.event==='triple'?'#60A5FA':'#34D399';
-    const lbl= h.event==='home_run'?'HR':h.event==='double'?'2B':h.event==='triple'?'3B':'1B';
-    return `<div class="spray-hit-row">
-      <span style="color:${tc};font-weight:700;width:20px;flex-shrink:0">${lbl}</span>
-      <span style="color:var(--muted);width:50px;flex-shrink:0">${(h.date||'').slice(5)}</span>
-      <span style="color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h.desc||h.bb||'—'}</span>
-      ${h.ev?`<span style="color:var(--muted);white-space:nowrap">${h.ev}mph</span>`:''}
+  // ── Pitch matchup section ─────────────────────────────────────────────────
+  const pitches = player.pitchMatchup || [];
+  const pitchRows = pitches.length ? pitches.map(pm => {
+    const v = pm.verdict || 'NO DATA';
+    const c = v==='CRUSHES'?'#F59E0B': v==='STRONG'?'#34D399': v==='STRUGGLES'?'#EF4444':'#64748B';
+    const bg= v==='CRUSHES'?'rgba(245,158,11,.08)': v==='STRONG'?'rgba(52,211,153,.06)': v==='STRUGGLES'?'rgba(239,68,68,.06)':'transparent';
+    const xslg = pm.xslg!=null ? `.${String(Math.round(pm.xslg*1000)).padStart(3,'0')}` : '—';
+    const hh   = pm.hard_hit!=null ? `${pm.hard_hit}%` : '—';
+    const wf   = pm.whiff!=null ? `${pm.whiff}%` : '';
+    const paLbl= pm.pa>0 ? `${pm.pa} PA` : 'No H2H';
+    // Usage bar width
+    const barW = Math.min(100, pm.pct||0);
+    const adj  = pm.adj>0?`+${pm.adj}`:pm.adj<0?`${pm.adj}`:'';
+    return `<div style="padding:7px 0;border-bottom:1px solid var(--dim);background:${bg}">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pm.name||pm.pt}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:var(--sub)">${pm.pct||0}%</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40">${v}</span>
+        ${adj?`<span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:${c}">${adj}</span>`:''}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div style="flex:1;height:3px;background:var(--dim);border-radius:2px;overflow:hidden">
+          <div style="width:${barW}%;height:100%;background:${c};opacity:.6;border-radius:2px"></div>
+        </div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);white-space:nowrap">xSLG <strong style="color:${c}">${xslg}</strong></span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);white-space:nowrap">HH <strong style="color:${c}">${hh}</strong></span>
+        ${wf?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);white-space:nowrap">K-Swing <strong>${wf}</strong></span>`:''}
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--dim);white-space:nowrap">${paLbl}</span>
+      </div>
     </div>`;
-  }).join('');
+  }).join('') : `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);padding:10px 0;text-align:center">No pitch arsenal data available</div>`;
+
   return `<div class="spray-wrap">
     <div class="spray-field-col">
       ${fieldSVG(events)}
@@ -610,9 +632,11 @@ function buildSprayInner(player, events) {
         </div>
       </div>
       ${stats}
-      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted)">HITS THIS SEASON (${hitList.length})</div>
-      <div class="spray-hit-list">
-        ${hitRows||`<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);padding:8px 0">No Statcast hit data yet</div>`}
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-top:4px;margin-bottom:4px">
+        PITCH MATCHUP — vs ${player.pitcher?.n||'pitcher'}
+      </div>
+      <div class="spray-hit-list" style="max-height:240px">
+        ${pitchRows}
       </div>
     </div>
   </div>`;
