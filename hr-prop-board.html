@@ -617,6 +617,7 @@ function buildSprayInner(player, events) {
     <div class="spray-field-col">
       ${fieldSVG(events)}
       <div class="spray-legend" style="margin-top:8px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);width:100%;margin-bottom:4px;letter-spacing:1px">LAST ${events.length} CONTACTS</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#F59E0B"></div>${hrs} HR</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#60A5FA"></div>${hits} Hits</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#475569;opacity:.5"></div>${outs} Outs</div>
@@ -632,8 +633,11 @@ function buildSprayInner(player, events) {
         </div>
       </div>
       ${stats}
-      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-top:4px;margin-bottom:4px">
-        PITCH MATCHUP — vs ${player.pitcher?.n||'pitcher'}
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-top:4px;margin-bottom:2px">
+        ${player.pitcher?.n||'PITCHER'}'S ARSENAL vs ${player.name.split(' ').pop().toUpperCase()}
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);margin-bottom:6px;opacity:.7">
+        Batter's career xSLG vs this pitch type (all pitchers) × pitcher's usage %
       </div>
       <div class="spray-hit-list" style="max-height:240px">
         ${pitchRows}

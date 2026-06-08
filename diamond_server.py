@@ -1047,7 +1047,7 @@ def fetch_batter_spray(batter_id):
                 "la":     round(_safe_float(row.get("launch_angle")), 1),
                 "bb":     row.get("bb_type","").strip(),
             })
-            if len(results) >= 25: break
+            if len(results) >= 5: break   # last 5 contacts only
         cache_set(f"spray_{batter_id}", results)
         print(f"[spray] batter {batter_id}: {len(results)} events")
         return results
