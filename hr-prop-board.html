@@ -161,6 +161,7 @@ table.pt th.c{text-align:center}
 .th-sort.asc::after{content:'↑'} .th-sort.desc::after{content:'↓'}
 .section-row td{padding:4px 10px 3px!important;background:rgba(6,12,24,.7);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);border-top:1px solid var(--border)}
 .pr{cursor:pointer;border-bottom:1px solid var(--dim);transition:background .07s}
+.pr:hover .p-photo{border-color:var(--blue)!important}
 .pr:hover{background:rgba(59,130,246,.04)}
 .pr.sel{background:rgba(245,158,11,.07)}
 .pr.sel .sel-dot{background:var(--amber)!important;border-color:var(--amber)!important}
@@ -305,6 +306,13 @@ table.pt th.c{text-align:center}
 .pm-row{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
 .pm-chip{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;white-space:nowrap}
 
+/* ── SPRAY MODAL ── */
+#sprayModal{display:none}
+#sprayModal.open{display:flex!important}
+.spray-dot-hr{display:inline-block;width:10px;height:3px;background:#F97316;border-radius:2px}
+.spray-dot-hit{display:inline-block;width:10px;height:3px;background:#10B981;border-radius:2px}
+.spray-dot-out{display:inline-block;width:10px;height:3px;background:#475569;border-radius:2px;opacity:.5}
+
 /* ── RESPONSIVE ── */
 @media(max-width:900px){.slip{display:none}}
 @media(max-width:680px){
@@ -403,6 +411,26 @@ table.pt th.c{text-align:center}
       <button class="slip-clear" onclick="clearSlip()">CLEAR ALL</button>
     </div>
   </aside>
+</div>
+
+<!-- SPRAY CHART MODAL -->
+<div id="sprayModal" onclick="if(event.target===this)closeSpray()" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:14px;padding:0;max-width:440px;width:95%;max-height:92vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.6)">
+    <div id="sprayHeader" style="display:flex;align-items:center;gap:12px;padding:16px 18px 14px;border-bottom:1px solid var(--border)">
+      <div id="sprayPhoto" style="width:48px;height:48px;border-radius:50%;background:var(--surface);border:2px solid var(--border);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px">⚾</div>
+      <div style="flex:1;min-width:0">
+        <div id="sprayName" style="font-size:16px;font-weight:700"></div>
+        <div id="sprayMeta" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub);margin-top:2px"></div>
+      </div>
+      <button onclick="closeSpray()" style="background:var(--surface);border:1px solid var(--border);color:var(--sub);cursor:pointer;padding:5px 11px;border-radius:6px;font-size:13px;transition:all .1s;flex-shrink:0" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--sub)'">✕</button>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:10px">SPRAY CHART — 2026 SEASON</div>
+      <div id="sprayField" style="border-radius:10px;overflow:hidden;line-height:0"></div>
+      <div id="sprayLegend" style="display:flex;gap:14px;margin-top:10px;flex-wrap:wrap"></div>
+      <div id="sprayList" style="margin-top:14px"></div>
+    </div>
+  </div>
 </div>
 
 <!-- DATA FOOTER -->
@@ -526,6 +554,185 @@ function computeEdges(p, g) {
 }
 
 // ═══════════════════════════════════════════════════
+// SPRAY CHART
+// ═══════════════════════════════════════════════════
+let playerMap = {};  // name → player obj, rebuilt on each load
+
+function openSpray(player) {
+  const modal = document.getElementById('sprayModal');
+  modal.classList.add('open');
+  // Header
+  const photoEl = document.getElementById('sprayPhoto');
+  photoEl.innerHTML = player.mlbId
+    ? `<img src="https://img.mlb.com/headshot/retro/67x50/${player.mlbId}.jpg" style="width:100%;height:100%;object-fit:cover;object-position:top center" onerror="this.parentElement.textContent='⚾'">`
+    : '⚾';
+  document.getElementById('sprayName').textContent = player.name;
+  document.getElementById('sprayMeta').textContent =
+    `${player.team} · ${player.pos||''} · ${player.bats} · vs ${player.pitcher ? player.pitcher.n : ''}`;
+  document.getElementById('sprayField').innerHTML = fieldSVG([]);
+  document.getElementById('sprayLegend').innerHTML = '';
+  document.getElementById('sprayList').innerHTML =
+    `<div style="text-align:center;padding:16px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)"><span class="spinner" style="width:14px;height:14px;margin-right:8px;vertical-align:middle"></span>LOADING STATCAST DATA...</div>`;
+
+  if (!player.mlbId) {
+    document.getElementById('sprayList').innerHTML =
+      `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);text-align:center;padding:12px">No player ID — spray data unavailable</div>`;
+    return;
+  }
+
+  fetch(`${API_BASE}/api/spray?batter_id=${player.mlbId}`, {cache:'no-store'})
+    .then(r => r.json())
+    .then(events => renderSpray(events, player))
+    .catch(e => {
+      document.getElementById('sprayList').innerHTML =
+        `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--red);padding:8px">⚠ ${e.message}</div>`;
+    });
+}
+
+function closeSpray() {
+  document.getElementById('sprayModal').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeSpray(); });
+
+function renderSpray(events, player) {
+  if (!events || !events.length) {
+    document.getElementById('sprayField').innerHTML = fieldSVG([]);
+    document.getElementById('sprayList').innerHTML =
+      `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);text-align:center;padding:12px">No Statcast data yet this season</div>`;
+    return;
+  }
+
+  document.getElementById('sprayField').innerHTML = fieldSVG(events);
+
+  // Legend
+  const hrs = events.filter(e => e.event === 'home_run').length;
+  const hits = events.filter(e => ['single','double','triple'].includes(e.event)).length;
+  const outs = events.filter(e => !['home_run','single','double','triple'].includes(e.event)).length;
+  document.getElementById('sprayLegend').innerHTML = `
+    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:5px">
+      <span class="spray-dot-hr"></span> ${hrs} HR
+    </span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:5px">
+      <span class="spray-dot-hit"></span> ${hits} Hits
+    </span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:5px">
+      <span class="spray-dot-out"></span> ${outs} Outs
+    </span>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-left:auto">${events.length} batted balls</span>`;
+
+  // Last 8 hits/HRs list
+  const hitEvents = events.filter(e => ['home_run','single','double','triple'].includes(e.event));
+  if (hitEvents.length) {
+    const rows = hitEvents.slice(0, 8).map(h => {
+      const typeColor = h.event==='home_run' ? '#F97316' : '#10B981';
+      const typeLabel = h.event==='home_run' ? 'HR' : h.event==='double' ? '2B' : h.event==='triple' ? '3B' : '1B';
+      const evStr = h.ev > 0 ? `${h.ev}mph` : '';
+      const laStr = h.la ? `${h.la > 0 ? '+' : ''}${h.la}°` : '';
+      const bbStr = h.bb ? h.bb.replace('_',' ') : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--dim)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:${typeColor};width:24px;flex-shrink:0">${typeLabel}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);width:56px;flex-shrink:0">${h.date||''}</span>
+        <span style="font-size:11px;color:var(--sub);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h.desc||bbStr||'—'}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);white-space:nowrap">${evStr}${evStr&&laStr?' · ':''}${laStr}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('sprayList').innerHTML =
+      `<div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:8px">LAST ${hitEvents.length} HITS THIS SEASON</div>${rows}`;
+  } else {
+    document.getElementById('sprayList').innerHTML =
+      `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);text-align:center;padding:10px">No hits recorded yet this season</div>`;
+  }
+}
+
+function fieldSVG(events) {
+  const W = 280, H = 248;
+  // Home plate position in SVG — Statcast home plate ~(125,200) in 250x250 space
+  const HX = 140, HY = 218;
+  // Scale Statcast coords to SVG
+  function sc(hcX, hcY) {
+    return [ (hcX/250)*W, (hcY/250)*(H+20) ];
+  }
+
+  const lines = events.map(ev => {
+    if (!ev.x || !ev.y) return '';
+    const [ex, ey] = sc(ev.x, ev.y);
+    const isHR   = ev.event === 'home_run';
+    const isHit  = ['single','double','triple','home_run'].includes(ev.event);
+    const color  = isHR ? '#F97316' : isHit ? '#10B981' : '#64748B';
+    const opacity= isHit ? '0.9' : '0.25';
+    const sw     = isHR ? 2.5 : isHit ? 1.8 : 1.2;
+    const dash   = isHit ? '' : 'stroke-dasharray="3 3"';
+    const tip    = `${ev.event||'out'}${ev.ev?' · '+ev.ev+'mph':''}${ev.la?' · '+ev.la+'°':''}${ev.date?' · '+ev.date:''}`;
+
+    // For HRs: extend the line 30% beyond the hit point (into the stands)
+    let endX = ex, endY = ey;
+    let standsMark = '';
+    if (isHR) {
+      const dx = ex - HX, dy = ey - HY;
+      endX = ex + dx * 0.30;
+      endY = ey + dy * 0.30;
+      standsMark = `<circle cx="${endX.toFixed(1)}" cy="${endY.toFixed(1)}" r="5" fill="#F97316" opacity="0.95"/>
+                    <circle cx="${endX.toFixed(1)}" cy="${endY.toFixed(1)}" r="9" fill="none" stroke="#F97316" stroke-width="1.5" opacity="0.4"/>`;
+    } else if (isHit) {
+      standsMark = `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="3.5" fill="${color}" opacity="0.85"/>`;
+    }
+
+    return `<g>
+      <line x1="${HX}" y1="${HY}" x2="${endX.toFixed(1)}" y2="${endY.toFixed(1)}"
+            stroke="${color}" stroke-width="${sw}" opacity="${opacity}" ${dash}>
+        <title>${tip}</title>
+      </line>
+      ${standsMark}
+    </g>`;
+  }).join('');
+
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <!-- Background -->
+  <rect width="${W}" height="${H}" fill="#091420"/>
+
+  <!-- Outfield grass (fair territory) -->
+  <path d="M ${HX} ${HY} L 6 48 A 210 210 0 0 1 274 48 Z" fill="#122010"/>
+
+  <!-- Warning track -->
+  <path d="M 15 62 A 196 196 0 0 1 265 62 L 274 48 A 210 210 0 0 0 6 48 Z" fill="#1e160a"/>
+
+  <!-- Outfield fence arc -->
+  <path d="M 6 48 A 210 210 0 0 1 274 48" fill="none" stroke="#2a5a20" stroke-width="2.5"/>
+
+  <!-- Foul lines -->
+  <line x1="${HX}" y1="${HY}" x2="6" y2="48" stroke="#1e3a18" stroke-width="1.5"/>
+  <line x1="${HX}" y1="${HY}" x2="274" y2="48" stroke="#1e3a18" stroke-width="1.5"/>
+
+  <!-- Infield dirt -->
+  <ellipse cx="${HX}" cy="168" rx="68" ry="60" fill="#1c1108"/>
+
+  <!-- Outfield grass circle (inset) -->
+  <ellipse cx="${HX}" cy="168" rx="52" ry="46" fill="#122010"/>
+
+  <!-- Basepaths dirt -->
+  <polygon points="${HX},${HY} 193,168 ${HX},122 87,168" fill="#1c1108"/>
+
+  <!-- Bases -->
+  <rect x="187" y="162" width="9" height="9" fill="#e8e8d0" rx="1" transform="rotate(45 191.5 166.5)"/>
+  <rect x="136" y="116" width="9" height="9" fill="#e8e8d0" rx="1" transform="rotate(45 140.5 120.5)"/>
+  <rect x="84" y="162" width="9" height="9" fill="#e8e8d0" rx="1" transform="rotate(45 88.5 166.5)"/>
+
+  <!-- Pitcher mound -->
+  <circle cx="${HX}" cy="158" r="7" fill="#1c1108" stroke="#2a1a08" stroke-width="1.5"/>
+  <circle cx="${HX}" cy="158" r="3" fill="#2a1a08"/>
+
+  <!-- Hit lines (drawn before home plate so plate is on top) -->
+  ${lines}
+
+  <!-- Home plate -->
+  <polygon points="${HX},${HY-10} ${HX-8},${HY-2} ${HX-6},${HY+7} ${HX+6},${HY+7} ${HX+8},${HY-2}"
+           fill="#f0ece0" stroke="#666" stroke-width="0.5"/>
+  <circle cx="${HX}" cy="${HY-1}" r="2" fill="#999" opacity="0.5"/>
+</svg>`;
+}
+
+// ═══════════════════════════════════════════════════
 // DATA LOADING
 // ═══════════════════════════════════════════════════
 function setStatus(cls, txt) {
@@ -574,6 +781,11 @@ async function loadDay(dateObj) {
     document.getElementById('dataFooter').style.display = '';
     document.getElementById('footerTimestamp').textContent = `Updated ${new Date().toLocaleTimeString()}`;
     expandedGames = new Set(); // collapsed by default — click SHOW MORE to expand
+    // Rebuild player lookup map for spray chart clicks
+    playerMap = {};
+    for (const g of activeGames) {
+      for (const p of buildPlayers(g)) { playerMap[p.name] = p; }
+    }
     render();
     autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
   } catch(err) {
@@ -889,9 +1101,9 @@ function playerRow(p, g) {
   const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
 
   return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
-  <td class="td-ph">
+  <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add/remove from parlay slip" style="cursor:pointer">
     <div class="p-photo-wrap">
-      <div class="p-photo">⚾${photo}</div>
+      <div class="p-photo" style="transition:border-color .12s;border-color:${sel?'var(--amber)':'var(--border)'}">⚾${photo}</div>
       <div class="sel-dot"></div>
     </div>
   </td>
@@ -1023,7 +1235,17 @@ function renderTargetsPanel() {
 // PARLAY SLIP
 // ═══════════════════════════════════════════════════
 function handleRowClick(el) {
-  try { toggleLeg(JSON.parse(el.dataset.leg)); } catch(e){}
+  // Row click → spray chart
+  try {
+    const leg = JSON.parse(el.dataset.leg);
+    const player = playerMap[leg.name];
+    if (player) openSpray(player);
+  } catch(e) {}
+}
+function handlePhotoClick(el, event) {
+  // Photo click → toggle parlay leg
+  event.stopPropagation();
+  try { toggleLeg(JSON.parse(el.closest('tr').dataset.leg)); } catch(e) {}
 }
 function toggleLeg(p) {
   const idx = legs.findIndex(l=>l.name===p.name);

@@ -1002,6 +1002,54 @@ def fetch_pitcher_arsenal():
         return {}
 
 
+def fetch_batter_spray(batter_id):
+    """Last 20 batted-ball events with Statcast hc_x/hc_y coordinates."""
+    if not batter_id: return []
+    cached = cache_get(f"spray_{batter_id}", ttl=SPLITS_TTL)
+    if cached: return cached
+    url = (
+        "https://baseballsavant.mlb.com/statcast_search/csv"
+        "?all=true&hfSea=2026%7C&player_type=batter"
+        f"&batters_lookup%5B%5D={batter_id}"
+        "&type=details&sort_col=game_date&sort_order=desc"
+        "&min_pitches=0&min_results=0&min_pas=0"
+        "&hfGT=R%7C&hfFlag=is%7C"   # regular season, in-play only
+    )
+    try:
+        raw = fetch_savant(url, timeout=25)
+        lines = [l for l in raw.strip().split("\n") if l]
+        if len(lines) < 2: return []
+        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        results = []
+        for line in lines[1:]:
+            cols = line.split(",")
+            if len(cols) < len(hdrs): continue
+            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
+            hc_x = _safe_float(row.get("hc_x"))
+            hc_y = _safe_float(row.get("hc_y"))
+            if not hc_x or not hc_y: continue
+            event = row.get("events", "").strip()
+            if not event: continue
+            results.append({
+                "x":      round(hc_x, 1),
+                "y":      round(hc_y, 1),
+                "event":  event,
+                "desc":   (row.get("des") or row.get("description",""))[:90].strip(),
+                "pitcher": row.get("player_name","").strip(),  # player_name = pitcher in batter search
+                "date":   row.get("game_date","").strip(),
+                "ev":     _safe_float(row.get("launch_speed")),
+                "la":     _safe_float(row.get("launch_angle")),
+                "bb":     row.get("bb_type","").strip(),
+            })
+            if len(results) >= 25: break
+        cache_set(f"spray_{batter_id}", results)
+        print(f"[spray] batter {batter_id}: {len(results)} events")
+        return results
+    except Exception as e:
+        print(f"[spray {batter_id}] Error: {e}")
+        return []
+
+
 def fetch_batter_pitch_stats():
     """Batter performance stats vs each pitch type (Baseball Savant)."""
     cached = cache_get("batter_pitch_stats", ttl=SPLITS_TTL)
@@ -1863,6 +1911,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 self.send_json({"error": str(e)}, 500)
+
+        elif path == "/api/spray":
+            batter_id = params.get("batter_id", [None])[0]
+            if not batter_id:
+                self.send_json({"error": "batter_id required"}, 400)
+            else:
+                try:
+                    data = fetch_batter_spray(int(batter_id))
+                    self.send_json(data)
+                except Exception as e:
+                    traceback.print_exc()
+                    self.send_json({"error": str(e)}, 500)
 
         elif path == "/api/refresh":
             with _cache_lock:
