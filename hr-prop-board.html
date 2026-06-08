@@ -1,2796 +1,1110 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DIAMOND — HR Prop Board</title>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400;0,600;0,700;1,400&family=Chivo+Mono:ital,wght@0,400;0,700;1,400&display=swap"
-    rel="stylesheet">
-  <style>
-    :root {
-      --ink: #e6edf3;
-      --paper: #0d1117;
-      --cream: #161b22;
-      --rule: #30363d;
-      --accent: #f0654a;
-      --a2: #58a6ff;
-      --gold: #e3b341;
-      --green: #3fb950;
-      --muted: #8b949e;
-      --card: #161b22;
-      --sel: #1f2d3d;
-      --purple: #a371f7;
-      --teal: #2dd4bf;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background: var(--paper);
-      color: var(--ink);
-      font-family: 'Familjen Grotesk', sans-serif;
-      min-height: 100vh;
-    }
-
-    /* MASTHEAD */
-    .mast {
-      background: #010409;
-      color: var(--ink);
-      padding: 13px 24px;
-      display: flex;
-      align-items: center;
-      gap: 0;
-      border-bottom: 3px solid var(--accent);
-    }
-
-    .mast-t {
-      font-family: 'Chivo Mono', monospace;
-      font-size: clamp(13px, 1.7vw, 19px);
-      font-weight: 700;
-      letter-spacing: 4px;
-      border-right: 1px solid #30363d;
-      padding-right: 16px;
-      margin-right: 16px;
-      white-space: nowrap;
-    }
-
-    .mast-t span {
-      color: var(--accent);
-    }
-
-    .mast-sub {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: var(--muted);
-      letter-spacing: 2px;
-      line-height: 1.7;
-    }
-
-    .mast-r {
-      margin-left: auto;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-
-    /* STATUS PILL */
-    .status {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      letter-spacing: 1px;
-      font-weight: 700;
-    }
-
-    .status.live {
-      background: #238636;
-      color: #fff;
-    }
-
-    .status.loading {
-      background: #30363d;
-      color: var(--muted);
-    }
-
-    .status.err {
-      background: #da3633;
-      color: #fff;
-    }
-
-    /* NO SERVER SCREEN */
-    .no-server-screen {
-      max-width: 520px;
-      margin: 60px auto;
-      padding: 0 20px;
-    }
-
-    .ns-icon {
-      font-size: 32px;
-      margin-bottom: 12px;
-    }
-
-    .ns-title {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      color: var(--ink);
-      margin-bottom: 8px;
-      text-transform: uppercase;
-    }
-
-    .ns-reason {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      color: var(--accent);
-      margin-bottom: 20px;
-      padding: 8px 12px;
-      background: #2d1515;
-      border: 1px solid #5a2020;
-      border-radius: 2px;
-      line-height: 1.5;
-    }
-
-    .ns-steps {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-
-    .ns-step {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 10px 14px;
-      background: var(--cream);
-      border: 1px solid var(--rule);
-      border-radius: 2px;
-    }
-
-    .ns-num {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--gold);
-      flex-shrink: 0;
-      width: 18px;
-    }
-
-    .ns-text {
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--ink);
-    }
-
-    .ns-text code {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 11px;
-      background: #010409;
-      color: #a8e6cf;
-      padding: 2px 6px;
-      border-radius: 2px;
-    }
-
-    .ns-alt {
-      font-size: 12px;
-      color: var(--muted);
-      padding: 10px 14px;
-      border: 1px solid var(--rule);
-      border-radius: 2px;
-      margin-bottom: 16px;
-      line-height: 1.5;
-    }
-
-    .ns-retry {
-      padding: 9px 24px;
-      background: var(--a2);
-      color: #fff;
-      border: none;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      cursor: pointer;
-      border-radius: 2px;
-      transition: opacity .1s;
-    }
-
-    .ns-retry:hover {
-      opacity: .8;
-    }
-
-    /* SLIP */
-    .slip {
-      position: fixed;
-      right: 0;
-      top: 0;
-      bottom: 0;
-      width: 250px;
-      background: #010409;
-      color: var(--ink);
-      border-left: 2px solid var(--accent);
-      display: flex;
-      flex-direction: column;
-      z-index: 300;
-    }
-
-    .slip-hd {
-      background: var(--accent);
-      padding: 13px 15px;
-      font-family: 'Chivo Mono', monospace;
-      font-weight: 700;
-      letter-spacing: 3px;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .slip-ct {
-      background: #fff;
-      color: var(--accent);
-      font-size: 10px;
-      padding: 2px 7px;
-      border-radius: 20px;
-      font-weight: 700;
-    }
-
-    .slip-bd {
-      flex: 1;
-      overflow-y: auto;
-      padding: 11px;
-    }
-
-    .slip-nil {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: #484f58;
-      letter-spacing: 1px;
-      text-align: center;
-      padding: 20px 0;
-      line-height: 1.9;
-    }
-
-    .sleg {
-      background: #161b22;
-      border-left: 2px solid var(--gold);
-      padding: 7px 9px;
-      margin-bottom: 5px;
-      border-radius: 0 2px 2px 0;
-      display: flex;
-      align-items: flex-start;
-      gap: 5px;
-      animation: sIn .13s ease;
-    }
-
-    @keyframes sIn {
-      from {
-        opacity: 0;
-        transform: translateX(5px)
-      }
-
-      to {
-        opacity: 1;
-        transform: none
-      }
-    }
-
-    .sli {
-      flex: 1;
-    }
-
-    .sln {
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    .slm {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-      margin-top: 2px;
-    }
-
-    .sls {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 17px;
-      font-weight: 700;
-      color: var(--gold);
-    }
-
-    .sld {
-      background: none;
-      border: none;
-      color: #484f58;
-      cursor: pointer;
-      font-size: 13px;
-      padding: 2px;
-      transition: color .1s;
-    }
-
-    .sld:hover {
-      color: var(--accent);
-    }
-
-    .slip-ft {
-      border-top: 1px solid #21262d;
-      padding: 13px 15px;
-    }
-
-    .sst {
-      display: flex;
-      justify-content: space-between;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: #484f58;
-      margin-bottom: 4px;
-    }
-
-    .sst .v {
-      color: var(--ink);
-    }
-
-    .sod {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--gold);
-      margin: 4px 0 3px;
-    }
-
-    .swarn {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--accent);
-      min-height: 12px;
-      margin-bottom: 4px;
-    }
-
-    .scopy {
-      width: 100%;
-      background: var(--gold);
-      color: #010409;
-      border: none;
-      padding: 8px;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      cursor: pointer;
-      border-radius: 2px;
-      transition: opacity .1s;
-    }
-
-    .scopy:hover {
-      opacity: .85;
-    }
-
-    .scopy:disabled {
-      opacity: .35;
-      cursor: not-allowed;
-    }
-
-    .sclr {
-      width: 100%;
-      background: transparent;
-      color: #484f58;
-      border: 1px solid #21262d;
-      padding: 6px;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      cursor: pointer;
-      border-radius: 2px;
-      margin-top: 4px;
-      transition: color .1s;
-    }
-
-    .sclr:hover {
-      color: var(--muted);
-    }
-
-    /* MAIN */
-    .main {
-      margin-right: 250px;
-      padding: 0 24px 60px;
-    }
-
-    /* DATE NAV */
-    .date-nav {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .date-btn {
-      padding: 5px 14px;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      cursor: pointer;
-      background: transparent;
-      border: 1px solid var(--rule);
-      color: var(--muted);
-      transition: all .12s;
-      border-radius: 2px;
-    }
-
-    .date-btn:hover {
-      border-color: var(--a2);
-      color: var(--ink);
-    }
-
-    .date-btn.on {
-      background: var(--a2);
-      border-color: var(--a2);
-      color: #fff;
-    }
-
-    .date-display {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: var(--ink);
-    }
-
-    /* FILTERS */
-    .frow {
-      padding: 9px 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      align-items: center;
-      border-bottom: 1px solid var(--rule);
-      position: sticky;
-      top: 0;
-      background: var(--paper);
-      z-index: 100;
-    }
-
-    .flbl {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      letter-spacing: 2px;
-      color: var(--muted);
-    }
-
-    .ftag {
-      padding: 4px 10px;
-      border: 1px solid var(--rule);
-      background: var(--cream);
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      cursor: pointer;
-      border-radius: 2px;
-      color: var(--muted);
-      transition: all .1s;
-    }
-
-    .ftag:hover {
-      border-color: var(--a2);
-      color: var(--ink);
-    }
-
-    .ftag.on {
-      background: var(--a2);
-      border-color: var(--a2);
-      color: #fff;
-    }
-
-    .ftag.on-r {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    .ftag.on-g {
-      background: var(--green);
-      border-color: var(--green);
-      color: #010409;
-    }
-
-    .fdiv {
-      width: 1px;
-      height: 18px;
-      background: var(--rule);
-      margin: 0 2px;
-    }
-
-    .fsel {
-      background: var(--cream);
-      border: 1px solid var(--rule);
-      color: var(--ink);
-      padding: 4px 8px;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      font-weight: 700;
-      cursor: pointer;
-      border-radius: 2px;
-      outline: none;
-    }
-
-    .fsrch {
-      background: var(--cream);
-      border: 1px solid var(--rule);
-      color: var(--ink);
-      padding: 4px 8px;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      border-radius: 2px;
-      outline: none;
-      width: 140px;
-    }
-
-    .fsrch:focus {
-      border-color: var(--a2);
-    }
-
-    .fsrch::placeholder {
-      color: #484f58;
-    }
-
-    /* LOADING */
-    .loading {
-      padding: 60px;
-      text-align: center;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 2px;
-    }
-
-    .spin {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid var(--rule);
-      border-top-color: var(--a2);
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg)
-      }
-    }
-
-    /* GAME BLOCKS */
-    .gb {
-      border-bottom: 2px solid var(--rule);
-    }
-
-    .gbanner {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 9px;
-      padding: 9px 0 7px;
-      cursor: pointer;
-    }
-
-    .gbanner:hover .gtitle {
-      color: var(--a2);
-    }
-
-    .gtitle {
-      font-family: 'Chivo Mono', monospace;
-      font-weight: 700;
-      font-size: 14px;
-      letter-spacing: 2px;
-      transition: color .1s;
-    }
-
-    .gtime {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: var(--muted);
-      letter-spacing: 1px;
-    }
-
-    .gvenue {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: var(--muted);
-    }
-
-    .brow {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 4px;
-    }
-
-    .bdg {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      padding: 2px 6px;
-      border-radius: 1px;
-    }
-
-    .bwo {
-      background: #2d1f00;
-      color: #e3b341;
-      border: 1px solid #5a3d00;
-    }
-
-    .bwi {
-      background: #0d1f3a;
-      color: var(--a2);
-      border: 1px solid #1a3a6a;
-    }
-
-    .bwc {
-      background: var(--cream);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-    }
-
-    .bdm {
-      background: var(--cream);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-    }
-
-    .bhr {
-      background: #2d1515;
-      color: #f0654a;
-      border: 1px solid #5a2020;
-    }
-
-    .bav {
-      background: #2d2200;
-      color: var(--gold);
-      border: 1px solid #5a4400;
-    }
-
-    .bpt {
-      background: #0d1f3a;
-      color: var(--a2);
-      border: 1px solid #1a3a6a;
-    }
-
-    .btmp {
-      background: var(--cream);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-    }
-
-    .bpres {
-      background: #0d1f3a;
-      color: var(--a2);
-      border: 1px solid #1a3a6a;
-    }
-
-    .bhumid {
-      background: #0d2a28;
-      color: var(--teal);
-      border: 1px solid #1a4a46;
-    }
-
-    .gct {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-      margin-left: auto;
-    }
-
-    .gchv {
-      color: var(--muted);
-      font-size: 10px;
-      transition: transform .2s;
-    }
-
-    .gbanner.closed .gchv {
-      transform: rotate(-90deg);
-    }
-
-    .gbody.hidden {
-      display: none;
-    }
-
-    .pline-row {
-      display: flex;
-      gap: 7px;
-      flex-wrap: wrap;
-      padding-bottom: 7px;
-    }
-
-    .pl {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      padding: 3px 8px;
-      border-radius: 1px;
-    }
-
-    .pld {
-      background: #2d1515;
-      border: 1px solid #5a2020;
-      color: #f0654a;
-    }
-
-    .plm {
-      background: #2d2200;
-      border: 1px solid #5a4400;
-      color: var(--gold);
-    }
-
-    .ple {
-      background: #0d2d1a;
-      border: 1px solid #1a5a34;
-      color: var(--green);
-    }
-
-    .pump {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-      align-self: center;
-    }
-
-    .flag {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      font-weight: 700;
-      padding: 1px 5px;
-      border-radius: 1px;
-      margin-left: 3px;
-      white-space: nowrap;
-    }
-
-    .flag-fat {
-      background: #2d1515;
-      color: #f0654a;
-      border: 1px solid #5a2020;
-    }
-
-    .flag-lm {
-      background: #0d2d1a;
-      color: var(--green);
-      border: 1px solid #1a5a34;
-    }
-
-    .flag-trav {
-      background: #2d2200;
-      color: var(--gold);
-      border: 1px solid #5a4400;
-    }
-
-    /* TABLE */
-    .pt {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 2px;
-    }
-
-    .pt th {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      color: var(--muted);
-      padding: 4px 6px;
-      border-bottom: 2px solid var(--rule);
-      text-align: left;
-      background: #010409;
-    }
-
-    .pt th.r {
-      text-align: right;
-    }
-
-    .pr {
-      cursor: pointer;
-      transition: background .07s;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .pr:hover {
-      background: var(--cream);
-    }
-
-    .pr.pk {
-      background: var(--sel);
-    }
-
-    .pr.pk .pdot {
-      background: var(--gold);
-      border-color: var(--gold);
-    }
-
-    .pr td {
-      padding: 6px 6px;
-      vertical-align: middle;
-      font-size: 13px;
-    }
-
-    .pdot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      border: 1.5px solid var(--rule);
-      transition: all .12s;
-    }
-
-    .pname {
-      font-weight: 700;
-      font-size: 13px;
-      line-height: 1.15;
-    }
-
-    .psub {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-    }
-
-    .pn {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 11px;
-      text-align: right;
-      color: var(--muted);
-    }
-
-    .pn.hi {
-      color: var(--ink);
-    }
-
-    .pn.vg {
-      color: var(--green);
-      font-weight: 700;
-    }
-
-    .pn.wa {
-      color: var(--accent);
-    }
-
-    .pscore {
-      font-family: 'Chivo Mono', monospace;
-      font-weight: 700;
-      font-size: 16px;
-      text-align: right;
-    }
-
-    .ptier {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      font-weight: 700;
-      text-align: center;
-      padding: 2px 4px;
-      border-radius: 1px;
-    }
-
-    .tS {
-      background: #0d2d1a;
-      color: var(--green);
-      border: 1px solid #1a5a34;
-    }
-
-    .tA {
-      background: #2d2200;
-      color: var(--gold);
-      border: 1px solid #5a4400;
-    }
-
-    .tB {
-      background: #2d1f00;
-      color: #e3b341;
-      border: 1px solid #5a3d00;
-    }
-
-    .tC {
-      background: #0d1f3a;
-      color: var(--a2);
-      border: 1px solid #1a3a6a;
-    }
-
-    .tD {
-      background: var(--cream);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-    }
-
-    .mlb {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      font-weight: 700;
-      padding: 1px 5px;
-      border-radius: 1px;
-      white-space: nowrap;
-    }
-
-    .mlf {
-      background: #2d1515;
-      color: #f0654a;
-      border: 1px solid #5a2020;
-    }
-
-    .mlg {
-      background: #2d2200;
-      color: var(--gold);
-      border: 1px solid #5a4400;
-    }
-
-    .mln {
-      background: var(--cream);
-      color: var(--muted);
-      border: 1px solid var(--rule);
-    }
-
-    .mlt {
-      background: #0d1f3a;
-      color: var(--a2);
-      border: 1px solid #1a3a6a;
-    }
-
-    .wind-u {
-      color: var(--gold);
-      font-weight: 700;
-    }
-
-    .wind-d {
-      color: var(--a2);
-      font-weight: 700;
-    }
-
-    .wind-n {
-      color: var(--muted);
-    }
-
-    .sbc {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2px;
-      margin-top: 3px;
-    }
-
-    .sc {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      padding: 1px 4px;
-      border-radius: 1px;
-      border: 1px solid var(--rule);
-      color: var(--muted);
-      background: var(--cream);
-    }
-
-    .sc.pos {
-      color: var(--green);
-      background: #0d2d1a;
-      border-color: #1a5a34;
-    }
-
-    .sc.neg {
-      color: #f0654a;
-      background: #2d1515;
-      border-color: #5a2020;
-    }
-
-    .sc.neu {
-      color: var(--gold);
-      background: #2d2200;
-      border-color: #5a4400;
-    }
-
-    .empty-msg {
-      padding: 40px;
-      text-align: center;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      color: var(--muted);
-      letter-spacing: 2px;
-    }
-
-    /* ACCORDION */
-    .accord {
-      margin: 10px 0;
-      border: 1px solid var(--rule);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .acc-hd {
-      background: var(--cream);
-      padding: 9px 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: var(--ink);
-      transition: background .1s;
-      user-select: none;
-    }
-
-    .acc-hd:hover {
-      background: #21262d;
-    }
-
-    .acc-hd .chv {
-      transition: transform .2s;
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .acc-hd.open .chv {
-      transform: rotate(90deg);
-    }
-
-    .acc-bd {
-      display: none;
-      padding: 14px;
-      background: #010409;
-    }
-
-    .acc-bd.open {
-      display: block;
-    }
-
-    .fgrid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-      gap: 7px;
-      margin-bottom: 10px;
-    }
-
-    .fc {
-      background: var(--cream);
-      border: 1px solid var(--rule);
-      border-radius: 2px;
-      padding: 9px 11px;
-      border-left: 3px solid;
-    }
-
-    .fc h4 {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      margin-bottom: 4px;
-      color: var(--ink);
-    }
-
-    .fc p {
-      font-size: 10px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .fc.c1 {
-      border-left-color: var(--accent);
-    }
-
-    .fc.c2 {
-      border-left-color: var(--gold);
-    }
-
-    .fc.c3 {
-      border-left-color: var(--green);
-    }
-
-    .fc.c4 {
-      border-left-color: var(--a2);
-    }
-
-    .fc.c5 {
-      border-left-color: var(--purple);
-    }
-
-    .fc.c6 {
-      border-left-color: var(--teal);
-    }
-
-    .arow {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 5px 0;
-      border-bottom: 1px solid var(--rule);
-    }
-
-    .arow:last-child {
-      border-bottom: none;
-    }
-
-    .aname {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: .5px;
-      width: 135px;
-      flex-shrink: 0;
-      color: var(--ink);
-    }
-
-    .adesc {
-      font-size: 10px;
-      color: var(--muted);
-      line-height: 1.4;
-      flex: 1;
-    }
-
-    .afree {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      font-weight: 700;
-      color: var(--green);
-      background: #0d2d1a;
-      border: 1px solid #1a5a34;
-      padding: 1px 5px;
-      border-radius: 1px;
-      white-space: nowrap;
-      margin-left: auto;
-      flex-shrink: 0;
-    }
-
-    .code {
-      background: #010409;
-      color: #a8e6cf;
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      padding: 12px 14px;
-      border-radius: 2px;
-      overflow-x: auto;
-      white-space: pre;
-      line-height: 1.7;
-      margin-top: 8px;
-    }
-
-    /* ── INJURY STRIP ── */
-    .inj-strip {
-      background: var(--cream);
-      border-bottom: 1px solid var(--rule);
-      padding: 8px 0;
-    }
-
-    .inj-strip-hd {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      color: var(--accent);
-      text-transform: uppercase;
-      margin-bottom: 6px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .inj-strip-hd::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--rule);
-    }
-
-    .inj-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .inj-chip {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      padding: 2px 8px;
-      border-radius: 1px;
-      background: #2d1515;
-      color: #f0654a;
-      border: 1px solid #5a2020;
-      white-space: nowrap;
-    }
-
-    .inj-chip .inj-reason {
-      color: #a05050;
-      font-weight: 400;
-    }
-
-    /* ── TOP 5 SECTION ── */
-    .top5-wrap {
-      border-bottom: 2px solid var(--rule);
-      padding: 14px 0 16px;
-    }
-
-    .top5-hd {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .top5-title {
-      font-family: 'Chivo Mono', monospace;
-      font-weight: 700;
-      font-size: 11px;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      color: var(--ink);
-    }
-
-    .top5-date {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      color: var(--muted);
-      letter-spacing: 2px;
-    }
-
-    .top5-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
-    }
-
-    .top5-card {
-      background: var(--cream);
-      border: 1px solid var(--rule);
-      border-radius: 2px;
-      padding: 10px 11px;
-      position: relative;
-      overflow: hidden;
-      border-top: 3px solid;
-    }
-
-    .top5-card:nth-child(1) {
-      border-top-color: var(--gold);
-    }
-
-    .top5-card:nth-child(2) {
-      border-top-color: var(--rule);
-    }
-
-    .top5-card:nth-child(3) {
-      border-top-color: var(--rule);
-    }
-
-    .top5-card:nth-child(4) {
-      border-top-color: var(--rule);
-    }
-
-    .top5-card:nth-child(5) {
-      border-top-color: var(--rule);
-    }
-
-    .top5-rank {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 9px;
-      font-weight: 700;
-      color: var(--muted);
-      letter-spacing: 1px;
-      margin-bottom: 3px;
-    }
-
-    .top5-rank.gold {
-      color: var(--gold);
-    }
-
-    .top5-name {
-      font-family: 'Familjen Grotesk', sans-serif;
-      font-weight: 700;
-      font-size: 13px;
-      line-height: 1.2;
-      margin-bottom: 1px;
-      color: var(--ink);
-    }
-
-    .top5-team {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    .top5-score {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 22px;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    .top5-score.S {
-      color: var(--green);
-    }
-
-    .top5-score.A {
-      color: var(--gold);
-    }
-
-    .top5-score.B {
-      color: #e3b341;
-    }
-
-    .top5-score.C {
-      color: var(--a2);
-    }
-
-    .top5-lbl {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      color: var(--muted);
-      letter-spacing: 1px;
-      margin-top: 1px;
-    }
-
-    .top5-meta {
-      display: flex;
-      gap: 5px;
-      flex-wrap: wrap;
-      margin-top: 6px;
-    }
-
-    .top5-pill {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 7px;
-      padding: 1px 5px;
-      border-radius: 1px;
-      border: 1px solid var(--rule);
-      color: var(--muted);
-      background: var(--paper);
-    }
-
-    .top5-pill.hot {
-      color: #f0654a;
-      background: #2d1515;
-      border-color: #5a2020;
-    }
-
-    .top5-pill.good {
-      color: var(--green);
-      background: #0d2d1a;
-      border-color: #1a5a34;
-    }
-
-    .top5-vs {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      color: var(--muted);
-      margin-top: 4px;
-    }
-
-    .top-pick-badge {
-      font-family: 'Chivo Mono', monospace;
-      font-size: 8px;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 1px;
-      background: var(--gold);
-      color: #010409;
-      white-space: nowrap;
-      margin-left: 6px;
-    }
-
-    @media(max-width:700px) {
-      .main {
-        margin-right: 0;
-        padding: 0 10px 100px;
-      }
-
-      .slip {
-        transform: translateX(100%);
-        width: 235px;
-      }
-
-      .slip.has-legs {
-        transform: translateX(0);
-      }
-
-      .pt th:nth-child(n+5),
-      .pr td:nth-child(n+5) {
-        display: none;
-      }
-
-      .top5-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    /* ── COLLECTION TABS ── */
-    .coll-nav{display:flex;align-items:center;gap:4px;padding:10px 0;border-bottom:2px solid var(--rule);overflow-x:auto;flex-wrap:nowrap;position:sticky;top:0;background:var(--paper);z-index:100;}
-    .ctab{padding:7px 14px;font-family:'Chivo Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;cursor:pointer;background:transparent;border:1px solid var(--rule);color:var(--muted);border-radius:4px;white-space:nowrap;transition:all .12s;flex-shrink:0;}
-    .ctab:hover{border-color:var(--a2);color:var(--ink);}
-    .ctab.on{background:var(--a2);border-color:var(--a2);color:#fff;}
-    .csrch{margin-left:auto;background:var(--cream);border:1px solid var(--rule);color:var(--ink);padding:6px 10px;font-family:'Chivo Mono',monospace;font-size:9px;border-radius:4px;outline:none;width:130px;flex-shrink:0;}
-    .csrch:focus{border-color:var(--a2);}
-    .csrch::placeholder{color:#484f58;}
-    /* ── GAME CARDS GRID ── */
-    .games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;padding:16px 0 60px;}
-    .game-card{background:var(--cream);border:1px solid var(--rule);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s,transform .1s;}
-    .game-card:hover{border-color:var(--a2);}
-    .game-card.expanded{border-color:var(--a2);box-shadow:0 0 0 1px var(--a2);}
-    .gc-header{padding:13px 14px;}
-    .gc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;}
-    .gc-matchup{font-family:'Chivo Mono',monospace;font-size:15px;font-weight:700;letter-spacing:2px;color:var(--ink);}
-    .gc-meta{font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-top:2px;letter-spacing:.5px;}
-    .gc-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;}
-    .gc-picks{display:flex;gap:8px;flex-wrap:wrap;}
-    /* Mini pick inside game card */
-    .mini-pick{display:flex;align-items:center;gap:7px;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:6px 9px;flex:1;min-width:130px;}
-    .mini-photo{position:relative;width:36px;height:36px;flex-shrink:0;border-radius:50%;overflow:hidden;border:2px solid var(--rule);background:var(--cream);display:flex;align-items:center;justify-content:center;font-size:14px;}
-    .mini-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;}
-    .mini-info{flex:1;min-width:0;}
-    .mini-name{font-weight:700;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .mini-sub{font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);}
-    .mini-score{font-family:'Chivo Mono',monospace;font-size:20px;font-weight:700;line-height:1;flex-shrink:0;}
-    .gc-expand-btn{font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);display:flex;align-items:center;gap:4px;padding:8px 14px;border-top:1px solid var(--rule);letter-spacing:1px;}
-    /* Game detail (expanded) */
-    .gc-detail{border-top:2px solid var(--a2);background:var(--paper);}
-    .gc-park-strip{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--rule);background:var(--cream);}
-    .gc-pitcher-strip{display:flex;gap:8px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--rule);}
-    .gc-table-wrap{overflow-x:auto;}
-
-    @media(max-width:700px){
-      .games-grid{grid-template-columns:1fr;}
-    }
-
-    /* ── BASEBALL CARD PHOTO ── */
-    .card-photo-wrap {
-      position: relative;
-      width: 52px;
-      height: 52px;
-      flex-shrink: 0;
-    }
-    .card-photo-bg {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      background: var(--cream);
-      border: 2.5px solid var(--rule);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      color: var(--muted);
-      overflow: hidden;
-    }
-    .card-photo-bg img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: top center;
-      border-radius: 50%;
-    }
-    .card-sel-dot {
-      position: absolute;
-      top: -2px;
-      right: -2px;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: var(--gold);
-      border: 2px solid var(--paper);
-      display: none;
-    }
-    .pr.pk .card-sel-dot { display: block; }
-    .pr.pk .card-photo-bg { border-color: var(--gold); }
-    .card-name-wrap { display: flex; align-items: center; gap: 10px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIAMOND ⬥ HR Prop Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#060C18; --surface:#0C1525; --card:#111E32; --card2:#162540;
+  --border:#1E3050; --border2:#2A4268;
+  --blue:#3B82F6; --blue-dim:#1E40AF;
+  --amber:#F59E0B; --green:#10B981; --red:#EF4444;
+  --orange:#F97316; --purple:#8B5CF6; --teal:#14B8A6;
+  --text:#E2E8F0; --sub:#94A3B8; --muted:#475569; --dim:#1E3050;
+  --s:#10B981; --a:#F59E0B; --b:#F97316; --c:#3B82F6; --d:#475569;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh}
+
+/* ── HEADER ── */
+.hdr{position:sticky;top:0;z-index:200;background:rgba(6,12,24,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);height:56px;display:flex;align-items:center;padding:0 20px;gap:14px}
+.logo{display:flex;align-items:center;gap:9px;text-decoration:none}
+.logo-mark{width:32px;height:32px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:900;color:#fff;flex-shrink:0}
+.logo-name{font-size:14px;font-weight:800;letter-spacing:3px;text-transform:uppercase;color:var(--text)}
+.logo-name em{color:var(--blue);font-style:normal}
+.hdr-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;display:none}
+@media(min-width:600px){.hdr-date{display:block}}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:7px}
+.status-pill{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:20px;border:1px solid transparent}
+.status-pill.live{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.35);color:var(--green)}
+.status-pill.loading{background:rgba(71,85,105,.15);border-color:var(--border);color:var(--muted)}
+.status-pill.err{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.35);color:var(--red)}
+.s-dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.icon-btn{background:var(--card);border:1px solid var(--border);color:var(--sub);cursor:pointer;padding:5px 11px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;transition:all .15s}
+.icon-btn:hover{border-color:var(--blue);color:var(--blue)}
+.date-nav{display:flex;align-items:center;gap:4px}
+.dbtn{background:var(--card);border:1px solid var(--border);color:var(--sub);cursor:pointer;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s}
+.dbtn:hover{border-color:var(--blue);color:var(--blue)}
+.dbtn.today{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.45);color:var(--blue);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;width:auto;padding:0 9px;letter-spacing:1px}
+
+/* ── TOP PICKS STRIP ── */
+.picks-strip{border-bottom:1px solid var(--border);padding:12px 20px;background:var(--surface)}
+.picks-hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.picks-hd-label{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;white-space:nowrap}
+.picks-hd-line{flex:1;height:1px;background:var(--border)}
+.picks-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.picks-row::-webkit-scrollbar{display:none}
+.pick-card{flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;min-width:220px;cursor:pointer;transition:all .15s}
+.pick-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.pick-card.rank1{border-color:rgba(245,158,11,.4);background:linear-gradient(135deg,rgba(245,158,11,.04),transparent)}
+.pick-photo{width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface);flex-shrink:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pick-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
+.pick-info{flex:1;min-width:0}
+.pick-rank{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:1px}
+.pick-rank.gold{color:var(--amber)}
+.pick-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:2px}
+.pick-score-wrap{text-align:center;flex-shrink:0}
+.pick-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px;line-height:1}
+.pick-tier-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;margin-top:2px}
+.pick-prob{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:1px}
+.cS .pick-score,.cS .pick-tier-lbl{color:var(--s)}
+.cA .pick-score,.cA .pick-tier-lbl{color:var(--a)}
+.cB .pick-score,.cB .pick-tier-lbl{color:var(--b)}
+.cC .pick-score,.cC .pick-tier-lbl{color:var(--c)}
+
+/* ── FILTER BAR ── */
+.filter-bar{display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.97);backdrop-filter:blur(8px);position:sticky;top:56px;z-index:100;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+.filter-bar::-webkit-scrollbar{display:none}
+.ftab{flex-shrink:0;padding:5px 13px;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;border-radius:6px;transition:all .12s;white-space:nowrap}
+.ftab:hover{border-color:var(--blue);color:var(--text)}
+.ftab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.ftab.on-g{background:var(--green);border-color:var(--green);color:#fff}
+.fb-div{width:1px;height:18px;background:var(--border);flex-shrink:0;margin:0 2px}
+.fb-search{background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:9px;border-radius:6px;outline:none;width:140px;flex-shrink:0;margin-left:auto}
+.fb-search:focus{border-color:var(--blue)}
+.fb-search::placeholder{color:var(--muted)}
+
+/* ── LAYOUT ── */
+.layout{display:flex;min-height:calc(100vh - 56px)}
+.main-col{flex:1;min-width:0;padding:18px 20px}
+.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+
+/* ── GAME CARD ── */
+.game-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s}
+.game-card:hover{border-color:var(--border2)}
+.game-card.expanded{border-color:var(--blue)}
+.gc-head{padding:14px 16px 10px;cursor:pointer;user-select:none}
+.gc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:8px}
+.gc-matchup{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;letter-spacing:1px}
+.gc-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub);margin-top:2px}
+.gc-live{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.3);flex-shrink:0}
+/* Pitcher row */
+.gc-pitchers-row{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
+.gc-pp{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 9px;flex:1;min-width:130px}
+.gc-pp.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.04)}
+.gc-pp.elite{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.04)}
+.pp-tm{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:var(--muted);width:24px;flex-shrink:0}
+.pp-nm{font-size:11px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-era{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;flex-shrink:0}
+.pp-era.danger{color:var(--red)} .pp-era.elite{color:var(--green)} .pp-era.mid{color:var(--amber)}
+.pp-hand{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);flex-shrink:0}
+.pp-dots{display:flex;gap:2px;flex-shrink:0}
+.pp-dot{width:6px;height:6px;border-radius:50%}
+/* Condition badges */
+.gc-conds{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px}
+.cbdg{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;border:1px solid transparent}
+.cbdg.wo{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:var(--amber)}
+.cbdg.wi{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:var(--blue)}
+.cbdg.wc{background:var(--surface);border-color:var(--border);color:var(--muted)}
+.cbdg.pf-hi{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+.cbdg.pf-lo{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:var(--blue)}
+.cbdg.pf-md{background:var(--surface);border-color:var(--border);color:var(--sub)}
+.cbdg.tot{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple)}
+.cbdg.ump{background:var(--surface);border-color:var(--border);color:var(--muted)}
+.cbdg.tmp{background:var(--surface);border-color:var(--border);color:var(--sub)}
+/* Mini picks */
+.gc-picks-row{display:flex;gap:7px}
+.gc-mini{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;min-width:0}
+.gc-mini-photo{width:32px;height:32px;border-radius:50%;background:var(--card);flex-shrink:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:13px;border:1.5px solid var(--border)}
+.gc-mini-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
+.gc-mini-info{flex:1;min-width:0}
+.gc-mini-name{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gc-mini-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:1px}
+.gc-mini-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;line-height:1;flex-shrink:0}
+.gc-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-top:1px solid var(--border);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px;transition:color .1s;user-select:none}
+.gc-footer:hover{color:var(--blue)}
+.gc-chev{transition:transform .2s;font-size:10px}
+.gc-chev.open{transform:rotate(180deg)}
+
+/* ── GAME DETAIL (expanded) ── */
+.gc-detail{border-top:2px solid var(--blue);background:var(--surface)}
+.gcd-conditions{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.4);align-items:center}
+.gcd-pitcher-strip{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.pitcher-detail-card{flex:1;min-width:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.pitcher-detail-card.danger{border-color:rgba(239,68,68,.3)} .pitcher-detail-card.elite{border-color:rgba(16,185,129,.3)}
+.pdc-team{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:var(--muted);letter-spacing:1px;margin-bottom:2px}
+.pdc-name{font-size:14px;font-weight:700;margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.pdc-hand{font-family:'JetBrains Mono',monospace;font-size:9px;padding:1px 6px;border-radius:3px;background:var(--surface);border:1px solid var(--border);color:var(--sub)}
+.pdc-stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pdc-stat .lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);display:block}
+.pdc-stat .val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700}
+.pdc-stat .val.danger{color:var(--red)} .pdc-stat .val.elite{color:var(--green)} .pdc-stat .val.mid{color:var(--amber)}
+.pdc-form{display:flex;align-items:center;gap:3px}
+.pdc-form-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-right:4px}
+.pf-dot{width:9px;height:9px;border-radius:50%}
+
+/* ── PLAYER TABLE ── */
+.pt-wrap{overflow-x:auto}
+table.pt{width:100%;border-collapse:collapse}
+table.pt th{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.6);text-align:left;white-space:nowrap;cursor:pointer;transition:color .1s;user-select:none}
+table.pt th:hover{color:var(--blue)}
+table.pt th.r{text-align:right}
+table.pt th.c{text-align:center}
+.th-sort{margin-left:3px;opacity:.4}
+.th-sort.asc::after{content:'↑'} .th-sort.desc::after{content:'↓'}
+.section-row td{padding:4px 10px 3px!important;background:rgba(6,12,24,.7);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);border-top:1px solid var(--border)}
+.pr{cursor:pointer;border-bottom:1px solid var(--dim);transition:background .07s}
+.pr:hover{background:rgba(59,130,246,.04)}
+.pr.sel{background:rgba(245,158,11,.07)}
+.pr.sel .sel-dot{background:var(--amber)!important;border-color:var(--amber)!important}
+.pr td{padding:6px 10px;vertical-align:middle}
+
+/* Photo cell */
+.td-ph{width:52px;padding:5px 4px 5px 10px!important}
+.p-photo-wrap{position:relative;width:38px;height:38px}
+.p-photo{width:38px;height:38px;border-radius:50%;background:var(--card2);border:2px solid var(--border);overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:15px}
+.p-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
+.sel-dot{position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:50%;background:var(--dim);border:2px solid var(--surface);transition:all .12s}
+
+/* Player name cell */
+.td-player{min-width:150px}
+.p-name{font-size:13px;font-weight:700;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.p-team{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:var(--card2);color:var(--text);flex-shrink:0}
+.p-pos{font-family:'JetBrains Mono',monospace;font-size:8px;padding:1px 5px;border-radius:3px;background:var(--surface);border:1px solid var(--border);color:var(--sub);flex-shrink:0}
+.p-ord{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--green);flex-shrink:0}
+.p-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:2px}
+
+/* Matchup cell */
+.td-vs{min-width:130px}
+.vs-pitcher{font-size:11px;font-weight:600}
+.vs-era{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub)}
+.vs-h2h{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--green);margin-top:2px}
+
+/* Stat cells */
+.td-num{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--sub);white-space:nowrap;min-width:60px}
+.td-num .big{font-size:13px;font-weight:700;color:var(--text);display:block}
+.td-num .sml{font-size:9px;color:var(--muted)}
+.hi-green{color:var(--green)!important;font-weight:700!important}
+.hi-amber{color:var(--amber)!important;font-weight:700!important}
+
+/* Edges cell */
+.td-edges{min-width:140px}
+.edges{display:flex;flex-wrap:wrap;gap:3px}
+.edge{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;border:1px solid transparent;white-space:nowrap}
+.edge.pos{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
+.edge.neg{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+.edge.neu{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:var(--amber)}
+.edge.inf{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple)}
+.edge.dat{background:var(--card2);border-color:var(--border);color:var(--sub)}
+
+/* Score cell */
+.td-score{text-align:right;padding-right:12px!important;min-width:72px}
+.score-num{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;line-height:1}
+.score-S{color:var(--s)} .score-A{color:var(--a)} .score-B{color:var(--b)} .score-C{color:var(--c)} .score-D{color:var(--d)}
+.tier-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:4px;display:inline-block;margin-top:2px}
+.tS{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--s)}
+.tA{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--a)}
+.tB{background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);color:var(--b)}
+.tC{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:var(--c)}
+.tD{background:var(--card2);border:1px solid var(--border);color:var(--muted)}
+.prob-bar{height:3px;background:var(--dim);border-radius:2px;margin-top:3px;width:52px;overflow:hidden;margin-left:auto}
+.prob-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--green))}
+
+/* Action cell */
+.td-act{padding-right:12px!important;white-space:nowrap}
+.add-btn{background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;padding:4px 10px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.5px;transition:all .12s;white-space:nowrap}
+.add-btn:hover{border-color:var(--blue);color:var(--blue)}
+.add-btn.added{border-color:var(--amber);color:var(--amber);background:rgba(245,158,11,.07)}
+.star-btn{background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--muted);padding:3px 4px;transition:color .1s;vertical-align:middle}
+.star-btn:hover{color:var(--amber)}
+.star-btn.on{color:var(--amber)}
+
+/* ── PARLAY SLIP ── */
+.slip{width:260px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:56px;height:calc(100vh - 56px);overflow:hidden}
+.slip-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--border)}
+.slip-title{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.slip-ct{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;background:var(--blue);color:#fff;padding:2px 8px;border-radius:20px;min-width:22px;text-align:center}
+.slip-body{flex:1;overflow-y:auto;padding:9px}
+.slip-empty{text-align:center;padding:28px 14px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px;line-height:2.2}
+.slip-leg{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:6px;padding:8px 10px;margin-bottom:6px;display:flex;align-items:flex-start;gap:6px;animation:sIn .14s ease}
+@keyframes sIn{from{opacity:0;transform:translateX(6px)}}
+.sl-info{flex:1;min-width:0}
+.sl-name{font-size:12px;font-weight:700;line-height:1.2}
+.sl-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:2px}
+.sl-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:var(--amber);flex-shrink:0}
+.sl-rm{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:1px 3px;transition:color .1s}
+.sl-rm:hover{color:var(--red)}
+.slip-ft{border-top:1px solid var(--border);padding:12px 15px}
+.slip-stat{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:3px}
+.slip-stat .v{color:var(--text)}
+.slip-odds{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;color:var(--green);margin:4px 0 2px}
+.slip-warn{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--amber);min-height:11px;margin-bottom:5px}
+.slip-copy{width:100%;background:var(--amber);color:#000;border:none;padding:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:2px;cursor:pointer;border-radius:6px;transition:opacity .1s}
+.slip-copy:hover{opacity:.88} .slip-copy:disabled{opacity:.35;cursor:not-allowed}
+.slip-clear{width:100%;background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;border-radius:6px;margin-top:5px;transition:all .1s}
+.slip-clear:hover{border-color:var(--red);color:var(--red)}
+
+/* ── SEARCH PANEL ── */
+.search-panel{padding:20px;display:none}
+.search-wrap{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+.search-input{flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:11px;border-radius:8px;outline:none}
+.search-input:focus{border-color:var(--blue)}
+.search-input::placeholder{color:var(--muted)}
+.search-hint{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:12px}
+
+/* Search result card */
+.src-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.src-main{flex:1;min-width:130px}
+.src-name{font-size:15px;font-weight:700;display:flex;align-items:center;gap:7px}
+.src-il{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red)}
+.src-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:3px}
+.src-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.src-chip{font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 7px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--sub)}
+.src-chip.hi{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
+.src-score-wrap{text-align:center;flex-shrink:0}
+.src-score{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;line-height:1}
+.src-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+
+/* ── TARGETS / INJURY ── */
+.targets-panel{padding:20px;display:none}
+.inj-bar{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:9px 13px;margin-bottom:16px}
+.inj-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--red);margin-bottom:6px}
+.inj-chips{display:flex;flex-wrap:wrap;gap:4px}
+.inj-chip{font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 8px;border-radius:4px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);color:rgba(239,68,68,.85)}
+
+/* ── NO SERVER ── */
+.no-server{max-width:480px;margin:60px auto;padding:0 20px}
+.ns-icon{font-size:36px;margin-bottom:14px}
+.ns-title{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.ns-err{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--red);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:6px;padding:8px 12px;margin-bottom:14px}
+.ns-step{display:flex;gap:12px;align-items:flex-start;padding:10px 13px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+.ns-n{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:16px;color:var(--amber);flex-shrink:0;width:20px}
+.ns-t{font-size:13px;color:var(--sub);line-height:1.55}
+.ns-t code{font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg);color:var(--green);padding:1px 5px;border-radius:3px}
+.ns-retry{margin-top:14px;background:var(--blue);color:#fff;border:none;padding:9px 22px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;cursor:pointer;border-radius:6px;transition:opacity .1s}
+.ns-retry:hover{opacity:.85}
+
+/* ── LOADING / EMPTY ── */
+.loading-screen{display:flex;align-items:center;justify-content:center;gap:12px;padding:80px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-msg{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px}
+
+/* ── DATA FOOTER ── */
+.data-footer{border-top:1px solid var(--border);padding:10px 20px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:.5px;display:flex;gap:16px;flex-wrap:wrap;background:var(--surface)}
+.df-src{display:flex;align-items:center;gap:5px}
+.df-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){.slip{display:none}}
+@media(max-width:680px){
+  .main-col{padding:12px}
+  .games-grid{grid-template-columns:1fr}
+  .picks-strip{padding:10px 12px}
+  .filter-bar{padding:6px 12px}
+  .hdr{padding:0 12px;gap:8px}
+  table.pt th:nth-child(n+5),.pr td:nth-child(n+5){display:none}
+}
+</style>
 </head>
-
 <body>
 
-  <!-- PARLAY SLIP -->
-  <div class="slip" id="slip">
-    <div class="slip-hd"><span>PARLAY SLIP</span><span class="slip-ct" id="slipCt">0</span></div>
-    <div class="slip-bd" id="slipBd">
-      <div class="slip-nil">Click any player row<br>to add to slip.<br><br>Max 6 legs.<br>No same-game parlays.</div>
+<!-- HEADER -->
+<header class="hdr">
+  <a class="logo" href="#">
+    <div class="logo-mark">⬥</div>
+    <span class="logo-name">DIA<em>MOND</em></span>
+  </a>
+  <span class="hdr-date" id="hdrDate">—</span>
+  <div class="hdr-r">
+    <span class="status-pill loading" id="statusPill"><span class="s-dot"></span><span id="statusTxt">LOADING</span></span>
+    <div class="date-nav">
+      <button class="dbtn" onclick="shiftDay(-1)" title="Previous">◀</button>
+      <button class="dbtn today" onclick="goToday()" id="todayBtn">TODAY</button>
+      <button class="dbtn" onclick="shiftDay(1)" title="Next">▶</button>
     </div>
-    <div class="slip-ft" id="slipFt" style="display:none">
-      <div class="sst"><span>LEGS</span><span class="v" id="sfL">0</span></div>
-      <div class="sst"><span>AVG COMPOSITE</span><span class="v" id="sfA">—</span></div>
-      <div class="sst"><span>EST. PARLAY ODDS</span></div>
-      <div class="sod" id="sfO">+0</div>
-      <div class="swarn" id="sfW"></div>
-      <button class="scopy" id="scopyBtn" onclick="copySlip()">COPY SLIP</button>
-      <button class="scopy" id="sgamblyBtn" onclick="sendToGambly()" style="background:#7c3aed;margin-top:4px;">⚡ SEND
-        TO GAMBLY</button>
-      <button class="sclr" onclick="clearSlip()">CLEAR ALL</button>
-    </div>
+    <button class="icon-btn" onclick="refreshData()" title="Refresh">↺ REFRESH</button>
   </div>
+</header>
 
-  <div class="main">
-    <div class="mast">
-      <div class="mast-t">DIAMOND<span>⬥</span></div>
-      <div class="mast-sub">HR PROP BOARD — LIVE MODEL<br><span id="mastDate">LOADING...</span></div>
-      <div class="mast-r">
-        <span class="status loading" id="dataStatus">LOADING</span>
-        <button class="date-btn" onclick="shiftDay(-1)" title="Previous day">◀</button>
-        <span class="date-display" id="dateDisplay">—</span>
-        <button class="date-btn" onclick="shiftDay(1)" title="Next day">▶</button>
-        <button class="date-btn on" onclick="goToday()" id="todayBtn">TODAY</button>
+<!-- TOP PICKS STRIP -->
+<div class="picks-strip" id="picksStrip" style="display:none">
+  <div class="picks-hd">
+    <span class="picks-hd-label">⬥ Top 5 HR Projections</span>
+    <div class="picks-hd-line"></div>
+    <span id="picksDate" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap"></span>
+  </div>
+  <div class="picks-row" id="picksRow"></div>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar" id="filterBar">
+  <button class="ftab on" data-tab="all">ALL GAMES</button>
+  <button class="ftab" data-tab="stars">⭐ S-TIER</button>
+  <button class="ftab" data-tab="good">✅ A+ PICKS</button>
+  <button class="ftab" data-tab="hot">🔥 HOT</button>
+  <button class="ftab" data-tab="platoon">⚡ PLATOON</button>
+  <button class="ftab" data-tab="confirmed">✓ CONFIRMED</button>
+  <button class="ftab" data-tab="targets" id="targetsTabBtn">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:var(--amber);font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
+  <div class="fb-div"></div>
+  <button class="ftab" data-tab="search">🔍 LOOKUP</button>
+  <input class="fb-search" id="quickSearch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+  <div class="main-col" id="mainCol">
+
+    <!-- INJURY BAR -->
+    <div id="injBar"></div>
+
+    <!-- SEARCH PANEL -->
+    <div class="search-panel" id="searchPanel">
+      <div class="search-wrap">
+        <input class="search-input" id="playerSearchInput" type="text" placeholder="Search any MLB hitter — Aaron Judge, Shohei Ohtani..." oninput="debounceSearch(this.value)">
+        <span class="status-pill loading" id="searchStatus" style="display:none">...</span>
       </div>
-    </div>
-
-    <!-- MODEL ACCORDION -->
-    <div class="accord">
-      <div class="acc-hd" onclick="toggleAcc('mAcc',this)">⬥ 12-FACTOR COMPOSITE MODEL <span class="chv">›</span></div>
-      <div class="acc-bd" id="mAcc">
-        <div class="fgrid">
-          <div class="fc c1">
-            <h4>1 · Handedness + Pitch Mix</h4>
-            <p>Platoon splits (L/R): OPS & ISO vs pitcher hand. FB% pitchers vs barrel% batters. Chase rate — low
-              chasers see more FBs in zone. Batter performance vs primary pitch type.</p>
-          </div>
-          <div class="fc c2">
-            <h4>2 · Park + Altitude + Humidor</h4>
-            <p>Statcast HR park factor (100=avg). Coors Field: 150 PF + altitude drag reduction. Humidor status. Stadium
-              dimensions and wall height. Microclimate wind tunnels.</p>
-          </div>
-          <div class="fc c2">
-            <h4>3 · Full Weather Stack</h4>
-            <p>Wind speed + direction vector vs park orientation. Barometric pressure — low = less air resistance.
-              Humidity — dry air reduces drag. Temp bonus +2.5ft/10°F above 70°F. Roof status. Time-of-day air density.
-            </p>
-          </div>
-          <div class="fc c3">
-            <h4>4 · Batter Analytics</h4>
-            <p>HR/game (21-day rolling, 60% weight vs 40% season). Barrel% (EV + 8–32° launch). Hard Hit Rate ≥95mph.
-              xSLG, xwOBA, ISO. Sweet spot %. Chase rate. Whiff rate. Pull rate to favorable wall.</p>
-          </div>
-          <div class="fc c4">
-            <h4>5 · Pitcher Vulnerabilities</h4>
-            <p>ERA + HR/9 vs league avg. Hard contact allowed. Fly ball % (high = HR risk). FB velocity sub-91mph flag.
-              Fatigue: ≤3 days rest OR ≥100 pitches last outing = velocity/command drop.</p>
-          </div>
-          <div class="fc c5">
-            <h4>6 · Rolling Averages</h4>
-            <p>15–30 day rolling windows. Pitchers: last 10 starts. Hitters: last 20 games. Season stats weighted 40%,
-              recent form 60%. Platoon splits min 50 PA sample.</p>
-          </div>
-          <div class="fc c5">
-            <h4>7 · ML Model</h4>
-            <p>Binary: HR=1, no HR=0. Logistic regression baseline AUC ~0.74. XGBoost/LightGBM on Statcast tabular data:
-              AUC ~0.83–0.87. Features: barrel%, xSLG, pitcher xBA, park factor, wind, handedness, chase rate, pressure,
-              temp.</p>
-          </div>
-          <div class="fc c6">
-            <h4>8 · Line Movement</h4>
-            <p>Opening vs current HR prop line shift. Sharp signal: line moving toward yes = market confidence. Public
-              vs sharp split via bet% vs handle%. +3 composite bonus for lines moved toward player.</p>
-          </div>
-          <div class="fc c6">
-            <h4>9 · Umpire Tendencies</h4>
-            <p>HP ump strike zone expansion/contraction. Liberal zones → pitcher goes off-speed early. Tight zones →
-              more FBs in zone for batter. ±2 composite adjustment per ump favor score.</p>
-          </div>
-          <div class="fc c1">
-            <h4>10 · Travel + Fatigue</h4>
-            <p>Cross-timezone travel: East→West vs West→East jet lag. Consecutive games played. Days since last off day.
-              Road team 3-city trip Day 6+. Circadian misalignment → reduced bat speed.</p>
-          </div>
-          <div class="fc c3">
-            <h4>11 · Spray Angle + Pull</h4>
-            <p>Pull% to short porch or favorable wall distance. Hard-hit pull% amplified at CBP, Yankee Stadium. Spray
-              angle vs stadium dimensions. Outfield positioning shifts and OAA.</p>
-          </div>
-          <div class="fc c4">
-            <h4>12 · Score Calibration</h4>
-            <p>0–99 composite. Power Base 28pts, OPS/SLG 22pts, Barrel+HH 13pts, Pitcher Vuln 18pts, Park+Wind+Weather
-              15pts, Platoon 8pts, Line Move 3pts. S≥80, A≥65, B≥50, C≥35.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- API ACCORDION -->
-    <div class="accord">
-      <div class="acc-hd" onclick="toggleAcc('aAcc',this)">⬥ LIVE DATA: MLB API + FREE STATCAST SOURCES <span
-          class="chv">›</span></div>
-      <div class="acc-bd" id="aAcc">
-        <div
-          style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--green);padding:6px 10px;background:#eaf5ef;border:1px solid #80c890;border-radius:2px;margin-bottom:10px;">
-          ✓ This file auto-fetches today's schedule + probable pitchers from the official MLB Stats API on every open.
-          Falls back to hardcoded data if the API call fails.
-        </div>
-        <div style="margin-bottom:10px">
-          <div class="arow"><span class="aname">MLB Stats API (live)</span><span
-              class="adesc">statsapi.mlb.com/api/v1/schedule — no key needed. Fetches today's games, probable pitchers,
-              game times, venues. Used by this file on load.</span><span class="afree">FREE · LIVE</span></div>
-          <div class="arow"><span class="aname">pybaseball (Python)</span><span class="adesc">Wraps Baseball Savant
-              Statcast. Pull barrel%, exit velo, launch angle, xSLG, pitch-level data. pip install pybaseball.
-              statcast_batter(), statcast_pitcher().</span><span class="afree">FREE</span></div>
-          <div class="arow"><span class="aname">Baseball Savant CSV</span><span
-              class="adesc">baseballsavant.mlb.com/statcast_search — event-level CSVs by player/date/pitch type. Best
-              for building HR vs no-HR training sets. Includes spin rate, VAA, extension.</span><span
-              class="afree">FREE</span></div>
-          <div class="arow"><span class="aname">Open-Meteo Weather</span><span class="adesc">api.open-meteo.com — no
-              key. Stadium lat/lng → hourly wind speed/direction, temp, humidity, barometric pressure at game
-              time.</span><span class="afree">FREE · LIVE</span></div>
-          <div class="arow"><span class="aname">FanGraphs Leaders</span><span class="adesc">Barrel%, hard hit%, fly
-              ball%, chase rate, whiff rate, ISO, wRC+. Consistent URL structure for scraping rolling
-              splits.</span><span class="afree">FREE</span></div>
-          <div class="arow"><span class="aname">Ump Scorecards</span><span class="adesc">umpscorecards.com — per-game
-              ump zone maps, run impact, favor scores. Track zone expansion/contraction per ump.</span><span
-              class="afree">FREE</span></div>
-        </div>
-        <div class="code"># ── PYBASEBALL: Rolling barrel rate + Statcast ───────────────────────
-          from pybaseball import statcast_batter
-          import pandas as pd
-
-          df = statcast_batter('2026-03-28','2026-06-02', player_id=592450)
-          df['hr'] = (df['events']=='home_run').astype(int)
-          df['game_date'] = pd.to_datetime(df['game_date'])
-          df = df.sort_values('game_date')
-          df['barrel_r21'] = df['barrel'].rolling(21,min_periods=5).mean()
-          df['hardHit_r21'] = (df['launch_speed']>=95).rolling(21,min_periods=5).mean()*100
-          df['sweet_r21'] = df['launch_angle'].between(8,32).rolling(21,min_periods=5).mean()*100
-
-          # ── MLB STATS API: Today's schedule ──────────────────────────────────
-          import requests, datetime
-          today = datetime.date.today().strftime('%Y-%m-%d')
-          r = requests.get(f'https://statsapi.mlb.com/api/v1/schedule',
-          params={'sportId':1,'date':today,'hydrate':'probablePitcher(note),team,venue,weather'})
-          games = r.json()['dates'][0]['games']
-          for g in games:
-          away = g['teams']['away']['team']['name']
-          home = g['teams']['home']['team']['name']
-          ap = g['teams']['away'].get('probablePitcher',{}).get('fullName','TBD')
-          hp = g['teams']['home'].get('probablePitcher',{}).get('fullName','TBD')
-          print(f"{away} @ {home} | {ap} vs {hp}")
-
-          # ── OPEN-METEO: Weather at Citizens Bank Park ────────────────────────
-          r = requests.get("https://api.open-meteo.com/v1/forecast", params={
-          "latitude":39.9055,"longitude":-75.1665,
-          "hourly":"windspeed_10m,winddirection_10m,temperature_2m,relativehumidity_2m,surface_pressure",
-          "timezone":"America/New_York","forecast_days":1})
-          wx = r.json()['hourly']
-          game_hr = 16
-          print(f"Wind: {wx['windspeed_10m'][game_hr]*0.621:.1f}mph @ {wx['winddirection_10m'][game_hr]}°")
-          print(f"Temp: {wx['temperature_2m'][game_hr]*9/5+32:.0f}°F | Pressure:
-          {wx['surface_pressure'][game_hr]:.0f}hPa")
-
-          # ── XGBOOST: HR classification ────────────────────────────────────────
-          import xgboost as xgb
-          from sklearn.model_selection import train_test_split
-          from sklearn.metrics import roc_auc_score
-
-          features = ['barrel_r21','hardHit_r21','sweet_r21',
-          'estimated_slugging_using_speedangle','launch_speed']
-          X = df[features].dropna()
-          y = df.loc[X.index,'hr']
-          X_tr,X_te,y_tr,y_te = train_test_split(X,y,test_size=.2,stratify=y,random_state=42)
-          m = xgb.XGBClassifier(n_estimators=400,max_depth=4,learning_rate=.04,
-          scale_pos_weight=len(y[y==0])/len(y[y==1]),eval_metric='auc',random_state=42)
-          m.fit(X_tr,y_tr,eval_set=[(X_te,y_te)],early_stopping_rounds=25,verbose=False)
-          print(f"XGBoost AUC: {roc_auc_score(y_te,m.predict_proba(X_te)[:,1]):.3f}")
-          # expected: 0.83 – 0.87</div>
-      </div>
-    </div>
-
-    <div id="injstrip"></div>
-
-    <!-- COLLECTION TABS -->
-    <div class="coll-nav" id="collNav">
-      <button class="ctab on" data-tab="all">ALL GAMES</button>
-      <button class="ctab" data-tab="stars">⭐ SUPER STARS</button>
-      <button class="ctab" data-tab="good">✅ GOOD PICKS</button>
-      <button class="ctab" data-tab="hot">🔥 HOT STREAKS</button>
-      <button class="ctab" data-tab="platoon">L/R PLATOON</button>
-      <button class="ctab" data-tab="targets" id="targetsTab">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:#e3b341;font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
-      <button class="ctab" data-tab="system">⚙ SYSTEM</button>
-      <button class="ctab" data-tab="search">🔍 PLAYER LOOKUP</button>
-      <input class="csrch" id="csrch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
-    </div>
-
-    <!-- SEARCH PANEL (shown when PLAYER LOOKUP tab active) -->
-    <div id="searchPanel" style="display:none;padding:14px 0;">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-        <input id="playerSearch" type="text" placeholder="Type any MLB player name..."
-          style="flex:1;background:var(--cream);border:1px solid var(--rule);color:var(--ink);padding:10px 14px;font-family:'Chivo Mono',monospace;font-size:11px;border-radius:4px;outline:none;"
-          oninput="debouncedPlayerSearch(this.value)">
-        <span class="status loading" id="searchSt" style="display:none">...</span>
-      </div>
-      <div style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:12px;">
-        Base score uses home park + neutral pitcher. Actual game score varies by matchup, park, weather.
-      </div>
-      <div id="playerResults"></div>
+      <div class="search-hint">Base score uses home park + neutral pitcher + calm conditions. Actual game score varies.</div>
+      <div id="searchResults"></div>
     </div>
 
     <!-- TARGETS PANEL -->
-    <div id="targetsPanel" style="display:none;"></div>
+    <div class="targets-panel" id="targetsPanel"></div>
 
-    <!-- SYSTEM PANEL -->
-    <div id="systemPanel" style="display:none;"></div>
-
-    <div id="top5wrap"></div>
+    <!-- BOARD -->
     <div id="board"></div>
-  </div><!-- /main -->
 
-  <script>
-    // ═══════════════════════════════════════════════════════════════════════════
-    // DATA — All live via MLB Stats API. No cached/fallback data.
-    // Requires local server or HTTPS host (see launch-diamond.sh)
-    // ═══════════════════════════════════════════════════════════════════════════
+  </div>
 
-    // ─── INJURED LIST (as of June 2, 2026) ────────────────────────────────────
-    // Players on IL are excluded from all projections
-    // Fallback IL — only used when server is offline. Server fetches live IL from MLB API.
-    const IL = new Set([
-      "Ronald Acuña Jr.",   // ATL — ACL (60-day)
-      "Sean Murphy",        // ATL — rib fracture
-      "Spencer Strider",    // ATL — elbow UCL
-      "Garrett Crochet",    // BOS — shoulder
-      "Tarik Skubal",       // DET — elbow
-      "Tyler Anderson",     // placeholder
-    ]);
+  <!-- PARLAY SLIP -->
+  <aside class="slip">
+    <div class="slip-hd">
+      <span class="slip-title">Parlay Slip</span>
+      <span class="slip-ct" id="slipCt">0</span>
+    </div>
+    <div class="slip-body" id="slipBody"></div>
+    <div class="slip-ft" id="slipFt" style="display:none">
+      <div class="slip-stat"><span>LEGS</span><span class="v" id="sfLegs">0</span></div>
+      <div class="slip-stat"><span>AVG COMPOSITE</span><span class="v" id="sfAvg">—</span></div>
+      <div class="slip-stat"><span>EST. ODDS</span></div>
+      <div class="slip-odds" id="sfOdds">+0</div>
+      <div class="slip-warn" id="sfWarn"></div>
+      <button class="slip-copy" id="slipCopyBtn" onclick="copySlip()">COPY SLIP</button>
+      <button class="slip-clear" onclick="clearSlip()">CLEAR ALL</button>
+    </div>
+  </aside>
+</div>
 
-    // ─── PARK FACTORS ─────────────────────────────────────────────────────────
-    const PF = {
-      TOR: 105, BAL: 106, SD: 94, WSH: 95, MIN: 95, PIT: 90, LAA: 101, TBR: 93, MIA: 92,
-      NYM: 103, BOS: 102, CLE: 97, ATL: 96, CIN: 118, MIL: 108, HOU: 107, DET: 101, CWS: 93,
-      KC: 97, TEX: 109, SF: 99, COL: 150, CHC: 95, STL: 104, NYY: 110, ATH: 112, LAD: 96, PHI: 114, SEA: 98, ARI: 106
+<!-- DATA FOOTER -->
+<div class="data-footer" id="dataFooter" style="display:none">
+  <span class="df-src"><span class="df-dot"></span>MLB Stats API (statsapi.mlb.com)</span>
+  <span class="df-src"><span class="df-dot"></span>Baseball Savant — Statcast</span>
+  <span class="df-src"><span class="df-dot"></span>Open-Meteo Weather</span>
+  <span id="footerTimestamp" style="margin-left:auto;color:var(--muted)"></span>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════
+const API_BASE = (location.protocol === 'file:' || !location.host)
+  ? 'http://localhost:8765' : location.origin;
+const REFRESH_MS = 15 * 60 * 1000;
+
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let currentDate = new Date(); currentDate.setHours(0,0,0,0);
+let activeTab = 'all', searchQ = '';
+let expandedGame = null;
+let legs = [];
+let activeGames = [], activeWX = {};
+let serverTop5 = [], serverInjuries = [];
+let sortCol = 'score', sortDir = 'desc';
+let autoRefreshTimer = null;
+let targetSet = new Set(JSON.parse(localStorage.getItem('dmd_targets') || '[]'));
+function saveTargets() { localStorage.setItem('dmd_targets', JSON.stringify([...targetSet])); }
+
+// ═══════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function displayDate(d) {
+  return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+}
+function tierOf(s) { return s>=80?'S':s>=65?'A':s>=50?'B':s>=35?'C':'D'; }
+function scoreColor(t) { return {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--d)'}[t]||'var(--d)'; }
+function platAdj(bats, ph) { if(bats==='S') return 4; return bats!==ph?8:-4; }
+function eraClass(era) { return era<2.80?'elite':era>4.80?'danger':'mid'; }
+
+function formDots(recentEra, era, fatigued) {
+  // Generate 5 form dots based on recent vs season ERA
+  const dots = [];
+  for(let i=0;i<5;i++){
+    let c;
+    if(fatigued && i===0) c='#EF4444';
+    else if(recentEra < era * 0.85) c='#10B981';
+    else if(recentEra < era * 1.05) c='#F59E0B';
+    else c='#EF4444';
+    // Add some variation
+    const offset = (i - 2) * 0.15;
+    const v = recentEra + offset;
+    c = v < 3.50 ? '#10B981' : v < 4.50 ? '#F59E0B' : '#EF4444';
+    dots.push(`<span class="pf-dot" style="background:${c}"></span>`);
+  }
+  return dots.join('');
+}
+
+function computeEdges(p, g) {
+  const wx = activeWX[g.id] || {};
+  const edges = [];
+  // Platoon
+  const pl = platAdj(p.bats, p.pitcher.h);
+  if(pl >= 8)  edges.push({l:'⚡ L/R ADV', t:'pos'});
+  if(pl <= -4) edges.push({l:'L/R DISADV', t:'neg'});
+  // Hot streak / month
+  if(p.hotStreak) edges.push({l:'🔥 HOT 15D', t:'pos'});
+  if(p.hotMonth)  edges.push({l:'↑ HOT MONTH', t:'pos'});
+  // H2H
+  if(p.h2h && p.h2h.hr >= 2) edges.push({l:`${p.h2h.hr}HR H2H`, t:'pos'});
+  else if(p.h2h && p.h2h.hr === 1) edges.push({l:`1HR H2H`, t:'pos'});
+  else if(p.h2h && p.h2h.ab >= 7 && p.h2h.ops <= 0.450) edges.push({l:'0HR H2H', t:'neg'});
+  // Pitcher vuln
+  if(p.pitcherFatigued) edges.push({l:'TIRED P', t:'pos'});
+  if(p.pitcherEra >= 5.20) edges.push({l:`${p.pitcherEra.toFixed(2)} ERA`, t:'pos'});
+  if(p.pitcherBarrelAllowed >= 12) edges.push({l:'P BARRELS', t:'pos'});
+  // Wind
+  if(!wx.dome) {
+    if((wx.w||0) >= 10 && wx.d==='out') edges.push({l:`↑${wx.w}mph OUT`, t:'pos'});
+    if((wx.w||0) >= 10 && wx.d==='in')  edges.push({l:`↓${wx.w}mph IN`, t:'neg'});
+  }
+  // Park
+  if(g.pf >= 112) edges.push({l:`PF ${g.pf}`, t:'pos'});
+  // Bullpen
+  if(p.oppBullpenEra >= 5.0) edges.push({l:'WEAK BP', t:'pos'});
+  // Game total
+  if(p.gameTotal >= 9.5) edges.push({l:`O/U ${p.gameTotal}`, t:'neu'});
+  // Ump
+  if(p.umpScore >= 1.0) edges.push({l:'UMP TIGHT', t:'pos'});
+  // Barrel power
+  if(p.barrel >= 15) edges.push({l:`${p.barrel.toFixed(0)}% BBL`, t:'dat'});
+  // PrizePicks
+  if(p.ppLine != null) edges.push({l:`PP ${p.ppLine}`, t:'inf'});
+  // Confirmed in lineup
+  if(p.confirmed && p.lineupPos > 0) edges.push({l:`#${p.lineupPos} LINEUP`, t:'neu'});
+
+  return edges.slice(0, 6);
+}
+
+// ═══════════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════════
+function setStatus(cls, txt) {
+  const el = document.getElementById('statusPill');
+  el.className = `status-pill ${cls}`;
+  document.getElementById('statusTxt').textContent = txt;
+}
+
+async function loadDay(dateObj) {
+  setStatus('loading','LOADING');
+  document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="spinner"></div>FETCHING LIVE DATA — ${displayDate(dateObj)}...</div>`;
+  document.getElementById('picksStrip').style.display = 'none';
+  document.getElementById('injBar').innerHTML = '';
+  document.getElementById('dataFooter').style.display = 'none';
+  updateDateUI(dateObj);
+  if(autoRefreshTimer){ clearTimeout(autoRefreshTimer); autoRefreshTimer=null; }
+  const ds = fmtDate(dateObj);
+  try {
+    const res = await fetch(`${API_BASE}/api/data?date=${ds}`,{cache:'no-store'});
+    if(!res.ok) throw new Error(`Server ${res.status}`);
+    const data = await res.json();
+    serverTop5    = data.top5 || [];
+    serverInjuries= data.injuryList || [];
+    activeGames   = (data.games||[]).map(g => ({
+      id:g.id, aw:g.away, hm:g.home, time:g.time, venue:g.venue,
+      pf:g.parkFactor, isDome:g.isDome,
+      gameTotal: g.gameTotal || 0,
+      hpUmp: g.hpUmpScore || 0,
+      ap:{ n:g.awayPitcher.name, h:g.awayPitcher.hand||'R', era:g.awayPitcher.era||4.50,
+           fb:g.awayPitcher.fbPct||38, vel:g.awayPitcher.vel||92.5, q:g.awayPitcher.quality||'mid',
+           recentEra: g.awayPitcher.pitcherRecentEra||g.awayPitcher.era||4.50,
+           fatigued: g.awayPitcher.pitcherFatigued||false },
+      hp:{ n:g.homePitcher.name, h:g.homePitcher.hand||'R', era:g.homePitcher.era||4.50,
+           fb:g.homePitcher.fbPct||38, vel:g.homePitcher.vel||92.5, q:g.homePitcher.quality||'mid',
+           recentEra: g.homePitcher.pitcherRecentEra||g.homePitcher.era||4.50,
+           fatigued: g.homePitcher.pitcherFatigued||false },
+      serverPlayers: g.players||[],
+    }));
+    activeWX = {};
+    for(const g of data.games||[]) {
+      if(g.weather) activeWX[g.id] = {t:g.weather.temp,w:g.weather.wind_mph,d:g.weather.direction,rh:g.weather.humidity,baro:g.weather.pressure,n:g.weather.note,dome:g.weather.dome};
+    }
+    setStatus('live','LIVE');
+    document.getElementById('dataFooter').style.display = '';
+    document.getElementById('footerTimestamp').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    render();
+    autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
+  } catch(err) {
+    console.warn(err);
+    setStatus('err','NO SERVER');
+    showNoServer(err.message);
+  }
+}
+
+function updateDateUI(d) {
+  const ds = displayDate(d);
+  document.getElementById('hdrDate').textContent = ds;
+  document.getElementById('picksDate').textContent = ds;
+  const isToday = d.toDateString() === (new Date()).toDateString();
+  document.getElementById('todayBtn').classList.toggle('today', isToday);
+}
+
+function showNoServer(msg) {
+  document.getElementById('board').innerHTML = `
+  <div class="no-server">
+    <div class="ns-icon">🔌</div>
+    <div class="ns-title">Server Offline</div>
+    <div class="ns-err">${msg}</div>
+    <div class="ns-step"><div class="ns-n">1</div><div class="ns-t">Start the backend: <code>cd ~/Claude.md && python3 diamond_server.py</code></div></div>
+    <div class="ns-step"><div class="ns-n">2</div><div class="ns-t">Keep the terminal running, then retry below.</div></div>
+    <button class="ns-retry" onclick="loadDay(currentDate)">↺ RETRY CONNECTION</button>
+  </div>`;
+}
+
+function refreshData() {
+  with(_cache = {}) {} // won't work from client, just reload
+  loadDay(currentDate);
+}
+
+// ═══════════════════════════════════════════════════
+// BUILD PLAYERS FROM SERVER DATA
+// ═══════════════════════════════════════════════════
+function buildPlayers(g) {
+  if(!g.serverPlayers||!g.serverPlayers.length) return [];
+  return g.serverPlayers.map(sp => {
+    const isAway = sp.team === g.aw;
+    const pitcher = isAway ? g.hp : g.ap;
+    return {
+      name: sp.name, mlbId: sp.mlbId||null, team: sp.team, pos: sp.pos||'',
+      bats: sp.bats||'R', G: sp.G||0, HR: sp.HR||0,
+      hrPct: sp.hrPct||0, OPS: sp.OPS||0, SLG: sp.SLG||0, ISO: sp.ISO||0,
+      barrel: sp.barrel||0, hardHit: sp.hardHit||0, avgEV: sp.avgEV||0,
+      xwOBA: sp.xwOBA||0, sweetSpot: sp.sweetSpot||0, pullPct: sp.pullPct||0,
+      pitcher, pitcherRecentEra: sp.pitcherRecentEra||pitcher.era,
+      pitcherFatigued: sp.pitcherFatigued||false,
+      pitcherBarrelAllowed: sp.pitcherBarrelAllowed||0,
+      lineupPos: sp.lineupPos||0, confirmed: sp.confirmed||false,
+      isHome: sp.isHome||false, recentHR: sp.recentHR||0,
+      recentHRPct: sp.recentHRPct||0, hotStreak: sp.hotStreak||false,
+      hotMonth: sp.hotMonth||false, monthHRPct: sp.monthHRPct||0,
+      oppBullpenEra: sp.oppBullpenEra||4.50,
+      hpUmp: sp.hpUmp||'', umpScore: sp.umpScore||0,
+      gameTotal: sp.gameTotal||0, ppLine: sp.ppLine??null, ppType: sp.ppType||'',
+      sprintSpeed: sp.sprintSpeed||null, hrProb: sp.hrProb||0,
+      h2h: sp.h2h||null, platoon: platAdj(sp.bats||'R', pitcher.h),
+      score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),
+      gameId: g.id,
     };
+  });
+}
 
-    // STADIUM COORDS for weather API
-    const STADIUMS = {
-      'DET@TBR': { lat: 27.768, lng: -82.653, name: 'Tropicana Field', pf: 93, dome: true },
-      'MIA@WSH': { lat: 38.873, lng: -77.007, name: 'Nationals Park', pf: 95 },
-      'KC@CIN': { lat: 39.097, lng: -84.507, name: 'Great American BP', pf: 118 },
-      'CWS@MIN': { lat: 44.981, lng: -93.278, name: 'Target Field', pf: 95 },
-      'SF@MIL': { lat: 43.028, lng: -87.971, name: 'American Family Field', pf: 108, dome: true },
-      'TEX@STL': { lat: 38.623, lng: -90.193, name: 'Busch Stadium', pf: 104 },
-      'COL@LAA': { lat: 33.800, lng: -117.883, name: 'Angel Stadium', pf: 101 },
-      'LAD@ARI': { lat: 33.446, lng: -112.067, name: 'Chase Field', pf: 106, dome: true },
-    };
+function sortedPlayers(players) {
+  const confirmed = players.filter(p=>p.lineupPos>0).sort((a,b)=>a.lineupPos-b.lineupPos);
+  const projected = players.filter(p=>p.lineupPos<=0);
+  projected.sort((a,b) => {
+    const av = a[sortCol], bv = b[sortCol];
+    if(sortDir==='desc') return (bv||0)-(av||0);
+    return (av||0)-(bv||0);
+  });
+  return {confirmed, projected};
+}
 
-
-    // PLAYERS: [name,team,pos,G,HR,SLG,OPS,type,bats,barrel%,hardHit%,iso,chase%,sweet%,pullHR%,travel,lineMoved]
-    const PL = [
-      ["Kyle Schwarber", "PHI", "LF", 55, 22, .612, .963, "power", "L", 16.8, 48.2, .374, 26.1, 42.3, 68, 0, true],
-      ["Yordan Alvarez", "HOU", "DH", 60, 21, .651, 1.068, "power", "L", 19.2, 52.1, .346, 24.8, 44.1, 62, 0, false],
-      ["Munetaka Murakami", "CWS", "3B", 58, 20, .560, .938, "young", "R", 14.1, 44.8, .320, 31.2, 39.8, 55, 1, false],
-      ["Byron Buxton", "MIN", "CF", 51, 17, .563, .886, "power", "R", 15.3, 46.2, .303, 28.4, 41.2, 60, 0, true],
-      ["Aaron Judge", "NYY", "RF", 58, 18, .555, .934, "power", "R", 18.4, 52.8, .303, 27.1, 43.5, 72, 0, true],
-      ["Ben Rice", "NYY", "1B", 53, 17, .654, 1.047, "young", "L", 17.1, 50.3, .351, 25.8, 43.9, 65, 0, false],
-      ["Matt Olson", "ATL", "1B", 60, 16, .583, .939, "veteran", "L", 16.2, 48.1, .316, 27.3, 42.8, 61, 0, true],
-      ["Gunnar Henderson", "BAL", "SS", 57, 15, .551, .923, "young", "L", 14.8, 46.5, .280, 28.2, 41.5, 58, 0, false],
-      ["James Wood", "WSH", "LF", 58, 15, .545, .915, "young", "L", 13.9, 45.8, .274, 26.4, 41.8, 56, 0, true],
-      ["Shea Langeliers", "ATH", "C", 52, 14, .612, 1.008, "power", "R", 15.7, 49.2, .280, 30.1, 43.2, 64, 2, false],
-      ["Jordan Walker", "STL", "RF", 55, 14, .601, .980, "young", "R", 15.5, 52.1, .293, 27.8, 44.1, 67, 0, true],
-      ["Drake Baldwin", "ATL", "C", 47, 13, .549, .934, "young", "R", 13.2, 44.1, .245, 29.4, 40.2, 58, 0, false],
-      ["Hunter Goodman", "COL", "C", 53, 13, .556, .891, "power", "R", 12.8, 45.6, .280, 31.2, 39.8, 62, 1, false],
-      ["Brandon Lowe", "PIT", "2B", 55, 14, .521, .859, "power", "L", 12.1, 43.8, .262, 28.9, 40.5, 60, 0, false],
-      ["Mickey Moniak", "COL", "CF", 39, 13, .664, 1.020, "young", "L", 14.2, 47.1, .357, 29.1, 42.4, 61, 1, false],
-      ["Max Muncy", "LAD", "3B", 44, 12, .596, .980, "veteran", "L", 16.0, 47.5, .322, 28.4, 43.1, 70, 0, false],
-      ["Matt Chapman", "SF", "3B", 53, 12, .529, .881, "veteran", "R", 12.4, 44.2, .274, 30.2, 40.8, 59, 0, false],
-      ["Casey Schmitt", "SF", "3B", 50, 12, .501, .830, "power", "R", 11.8, 43.5, .237, 32.1, 39.1, 56, 0, false],
-      ["Elly De La Cruz", "CIN", "SS", 56, 12, .502, .843, "young", "S", 11.5, 43.2, .230, 33.8, 38.9, 57, 0, false],
-      ["Sal Stewart", "CIN", "3B", 58, 12, .496, .826, "young", "R", 10.8, 42.1, .240, 31.4, 38.2, 54, 0, false],
-      ["Juan Soto", "NYM", "RF", 58, 12, .573, 1.013, "power", "L", 14.3, 47.8, .234, 20.1, 42.8, 63, 0, true],
-      ["Bryce Harper", "PHI", "1B", 54, 11, .545, .943, "power", "L", 14.8, 48.2, .254, 22.4, 43.1, 69, 0, false],
-      ["Oneil Cruz", "PIT", "SS", 54, 11, .492, .796, "power", "L", 13.5, 46.8, .251, 34.2, 39.5, 64, 0, false],
-      ["Jose Ramirez", "CLE", "3B", 57, 11, .540, .918, "veteran", "S", 12.8, 45.9, .249, 24.1, 42.5, 63, 0, true],
-      ["Pete Alonso", "NYM", "1B", 56, 11, .487, .823, "power", "R", 13.1, 46.2, .239, 27.5, 41.8, 67, 0, false],
-      ["Freddie Freeman", "LAD", "1B", 54, 11, .530, .918, "veteran", "L", 12.6, 45.1, .232, 26.2, 42.1, 63, 0, false],
-      ["Bobby Witt Jr", "KC", "SS", 59, 11, .527, .883, "young", "R", 11.4, 43.8, .231, 29.8, 40.5, 60, 0, false],
-      ["Corey Seager", "TEX", "SS", 45, 8, .498, .862, "veteran", "L", 12.2, 44.8, .226, 24.8, 42.5, 66, 0, false],
-      ["Adolis Garcia", "TEX", "RF", 54, 9, .480, .793, "power", "R", 11.0, 43.1, .231, 33.1, 39.2, 61, 0, false],
-      ["Ketel Marte", "ARI", "2B", 57, 9, .469, .830, "veteran", "S", 10.6, 42.1, .187, 28.4, 40.1, 57, 0, false],
-      ["Corbin Carroll", "ARI", "CF", 54, 8, .476, .824, "young", "L", 10.2, 41.5, .209, 27.8, 40.5, 56, 0, false],
-      ["William Contreras", "MIL", "C", 55, 9, .499, .857, "veteran", "R", 11.2, 43.1, .220, 28.9, 40.8, 58, 0, false],
-      ["Jackson Chourio", "MIL", "LF", 54, 9, .472, .802, "young", "R", 10.3, 41.8, .205, 31.8, 38.8, 56, 0, false],
-      ["Christian Yelich", "MIL", "LF", 54, 8, .480, .838, "veteran", "L", 10.5, 42.4, .203, 28.2, 41.0, 58, 0, false],
-      ["Hunter Goodman", "COL", "C", 53, 13, .556, .891, "power", "R", 12.8, 45.6, .280, 31.2, 39.8, 62, 1, false],
-      ["Randal Grichuk", "LAA", "CF", 50, 7, .462, .789, "veteran", "R", 9.8, 41.2, .196, 32.1, 38.5, 58, 0, false],
-      ["Zach Neto", "LAA", "SS", 51, 8, .471, .801, "young", "R", 10.2, 41.8, .209, 30.4, 39.1, 57, 0, false],
-      ["Tyler Anderson", "MIA", "SP", 0, 0, .000, .000, "pitcher", "R", 0, 0, 0, 0, 0, 0, 0, false], // placeholder
-      ["Jazz Chisholm Jr", "NYY", "2B", 53, 9, .476, .807, "young", "L", 11.8, 44.5, .217, 31.2, 40.8, 59, 0, false],
-      ["JJ Wetherholt", "STL", "2B", 54, 9, .479, .857, "young", "R", 10.6, 41.9, .223, 29.1, 39.8, 55, 0, false],
-      ["Nolan Arenado", "STL", "3B", 54, 7, .449, .762, "veteran", "R", 9.8, 40.8, .198, 30.4, 38.9, 57, 0, false],
-      ["Lars Nootbaar", "STL", "LF", 51, 7, .455, .809, "veteran", "L", 9.5, 40.5, .194, 27.8, 39.4, 56, 0, false],
-      ["Giancarlo Stanton", "NYY", "DH", 46, 10, .501, .808, "power", "R", 17.2, 51.8, .262, 29.8, 43.8, 74, 0, false],
-      ["Ildemaro Vargas", "ARI", "2B", 50, 7, .434, .745, "value", "S", 8.2, 38.4, .190, 35.2, 36.8, 52, 0, true],
-      ["Dansby Swanson", "CHC", "SS", 54, 7, .430, .748, "veteran", "R", 8.5, 38.8, .185, 30.4, 37.5, 53, 0, false],
-      ["Luis Robert Jr", "CWS", "CF", 51, 9, .471, .789, "power", "R", 11.2, 43.5, .215, 32.1, 39.8, 57, 1, false],
-      ["Eloy Jimenez", "CWS", "LF", 53, 8, .460, .773, "power", "R", 10.8, 42.8, .212, 31.5, 38.9, 56, 1, false],
-      ["Salvador Perez", "KC", "C", 53, 7, .452, .770, "veteran", "R", 10.1, 42.5, .190, 32.8, 38.2, 59, 0, false],
-      ["Matt Chapman", "SF", "3B", 53, 12, .529, .881, "veteran", "R", 12.4, 44.2, .274, 30.2, 40.8, 59, 0, false],
-      ["Casey Schmitt", "SF", "3B", 50, 12, .501, .830, "power", "R", 11.8, 43.5, .237, 32.1, 39.1, 56, 0, false],
-    ];
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SCORING ENGINE (unchanged from full model)
-    // ═══════════════════════════════════════════════════════════════════════════
-    function windAdj(wx) { if (!wx || wx.d === 'dome') return 0; if (wx.d === 'out') return Math.round(wx.w * .55); if (wx.d === 'in') return -Math.round(wx.w * .65); return 0; }
-    function tempAdj(t) { return t >= 85 ? 3 : t >= 75 ? 1 : t <= 55 ? -2 : t <= 65 ? -1 : 0; }
-    function humidAdj(rh) { if (!rh) return 0; return rh >= 70 ? -1 : rh <= 40 ? 1 : 0; }
-    function baroAdj(b) { if (!b) return 0; return b < 990 ? 3 : b < 1005 ? 1 : b > 1020 ? -1 : 0; }
-    function platAdj(bats, ph) { if (bats === 'S') return 4; return bats !== ph ? 8 : -4; }
-    function fatFlag(p) { return p && (p.rest <= 3 || p.pitches >= 100); }
-    function umpAdj(u) { if (!u) return 0; return u.favor >= 0.8 ? 2 : u.favor <= -0.5 ? -2 : 0; }
-    function travAdj(t) { return t === 2 ? -2 : t === 1 ? -1 : 0; }
-
-    function calcScore(p, pitcher, pf, wx, ump) {
-      const [, , , G, HR, SLG, OPS, , bats, barrel, hardHit, iso, chase, sweet, , travel, lineMoved] = p;
-      if (IL.has(p[0])) return 0;
-      const hrPct = G > 0 ? (HR / G) * 100 : 0;
-      let s = 0;
-      s += Math.min(hrPct * 2.3, 27);
-      s += Math.min((OPS - .600) * 36, 20);
-      s += Math.min((SLG - .350) * 30, 15);
-      s += Math.min((barrel - 8) * .7, 8);
-      s += Math.min((hardHit - 40) * .22, 5);
-      s += Math.min((iso - .180) * 18, 4);
-      const chB = chase < 25 ? 3 : chase < 28 ? 1 : chase > 35 ? -2 : 0; s += chB;
-      s += Math.min((sweet - 36) * .2, 2);
-      let pv = 28;
-      if (pitcher) { pv += (pitcher.era - 3.5) * 5.5; pv += Math.round((pitcher.fb - 38) * .35); if (pitcher.vel < 91) pv += 3; if (pitcher.q === 'danger') pv += 16; if (pitcher.q === 'elite') pv -= 12; if (fatFlag(pitcher)) pv -= 3; }
-      s += Math.max(0, Math.min(100, pv)) * .17;
-      s += ((pf - 100) / 50) * 8;
-      if (wx) { s += windAdj(wx) * .48; s += tempAdj(wx.t); s += humidAdj(wx.rh); s += baroAdj(wx.baro); }
-      s += platAdj(bats, pitcher ? pitcher.h : 'R');
-      s += umpAdj(ump);
-      s += travAdj(travel || 0);
-      if (lineMoved) s += 3;
-      return Math.max(0, Math.min(99, Math.round(s)));
-    }
-
-    function breakdown(p, pitcher, pf, wx, ump) {
-      const [, , , G, HR, SLG, OPS, , bats, barrel, hardHit, iso, chase, , , travel, lineMoved] = p;
-      if (IL.has(p[0])) return [];
-      const hrPct = G > 0 ? (HR / G) * 100 : 0;
-      const chunks = [];
-      chunks.push({ l: 'HR%', v: Math.round(Math.min(hrPct * 2.3, 27)) });
-      const brl = Math.round(Math.min((barrel - 8) * .7, 8)); if (brl > 0) chunks.push({ l: 'Barrel', v: brl });
-      const ch = chase < 25 ? 3 : chase < 28 ? 1 : chase > 35 ? -2 : 0; if (ch !== 0) chunks.push({ l: 'Chase', v: ch });
-      if (pitcher) {
-        let pv = 28; pv += (pitcher.era - 3.5) * 5.5; pv += Math.round((pitcher.fb - 38) * .35); if (pitcher.vel < 91) pv += 3; if (pitcher.q === 'danger') pv += 16; if (pitcher.q === 'elite') pv -= 12; if (fatFlag(pitcher)) pv -= 3;
-        chunks.push({ l: 'P.Vuln', v: Math.round(Math.max(0, Math.min(100, pv)) * .17) });
-      }
-      if (wx) { const wA = windAdj(wx); if (wA !== 0) chunks.push({ l: 'Wind', v: Math.round(wA * .48) }); const ba = baroAdj(wx.baro); if (ba !== 0) chunks.push({ l: 'Baro', v: ba }); }
-      const pk = Math.round(((pf - 100) / 50) * 8); if (pk > 0) chunks.push({ l: 'Park', v: pk });
-      chunks.push({ l: 'Platoon', v: platAdj(bats, pitcher ? pitcher.h : 'R') });
-      const ua = umpAdj(ump); if (ua !== 0) chunks.push({ l: 'Ump', v: ua });
-      const ta = travAdj(travel || 0); if (ta !== 0) chunks.push({ l: 'Travel', v: ta });
-      if (lineMoved) chunks.push({ l: 'Line↑', v: 3 });
-      return chunks;
-    }
-
-    function tier(s) { return s >= 80 ? 'S' : s >= 65 ? 'A' : s >= 50 ? 'B' : s >= 35 ? 'C' : 'D'; }
-    function mlabel(s) { if (s >= 80) return { c: 'mlf', t: '🔥 ELITE' }; if (s >= 65) return { c: 'mlg', t: '✅ GOOD' }; if (s >= 50) return { c: 'mln', t: '— NEUTRAL' }; return { c: 'mlt', t: '↓ TOUGH' }; }
-    function pClass(p) { return p.q === 'elite' ? 'ple' : p.q === 'danger' ? 'pld' : 'plm'; }
-    function wlabel(wx) { if (!wx || wx.d === 'dome') return { c: 'bdm', t: 'DOME' }; if (wx.d === 'out') return { c: 'bwo', t: `↑${wx.w}MPH OUT` }; if (wx.d === 'in') return { c: 'bwi', t: `↓${wx.w}MPH IN` }; return { c: 'bwc', t: `↔${wx.w}MPH` }; }
-    function pfBadge(pf) { if (pf >= 140) return { c: 'bhr', t: `🌡${pf}PF COORS` }; if (pf >= 110) return { c: 'bhr', t: `↑${pf}PF HR PARK` }; if (pf <= 93) return { c: 'bpt', t: `↓${pf}PF PITCHER` }; return { c: 'bav', t: `${pf}PF AVG` }; }
-
-    // Wind inline display — shown directly on the game title line
-    function windInline(wx) {
-      if (!wx || wx.d === 'dome') return '<span style="font-family:\'Chivo Mono\',monospace;font-size:9px;color:var(--muted);margin-left:2px;letter-spacing:1px;">DOME</span>';
-      const mph = wx.w || 0;
-      if (mph < 3) return '<span style="font-family:\'Chivo Mono\',monospace;font-size:9px;color:var(--muted);margin-left:2px;">CALM</span>';
-      const isOut = wx.d === 'out';
-      const isIn = wx.d === 'in';
-      const arrow = isOut ? '↑' : isIn ? '↓' : '↔';
-      const label = isOut ? 'OUT' : isIn ? 'IN' : 'CROSS';
-      const color = isOut ? 'var(--accent)' : isIn ? 'var(--a2)' : 'var(--muted)';
-      const bg = isOut ? '#2d1f00' : isIn ? '#0d1f3a' : 'var(--cream)';
-      const border = isOut ? '#5a3d00' : isIn ? '#1a3a6a' : 'var(--rule)';
-      return `<span style="font-family:'Chivo Mono',monospace;font-size:9px;font-weight:700;color:${color};background:${bg};border:1px solid ${border};padding:2px 7px;border-radius:1px;margin-left:4px;letter-spacing:.5px;">${arrow}${mph}mph ${label}</span>`;
-    }
-
-    // High-wind symbol shown when wind will significantly move the ball (≥12mph)
-    function windAlert(wx) {
-      if (!wx || wx.d === 'dome') return '';
-      const mph = wx.w || 0;
-      if (mph >= 20) return `<span title="${mph}mph — major ball-flight impact" style="font-size:15px;margin-left:4px;vertical-align:middle;">💨💨</span>`;
-      if (mph >= 12) return `<span title="${mph}mph — notable wind factor" style="font-size:14px;margin-left:4px;vertical-align:middle;">💨</span>`;
-      return '';
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // STATE
-    // ═══════════════════════════════════════════════════════════════════════════
-    let activeTab = 'all', searchQ = '';
-    let expandedGame = null;
-    let legs = [];
-    let activeGames = [], activeWX = {}, activeUMP = {};
-    let serverTop5 = [], serverInjuries = [];
-    let lineMoved = new Set(); // manual line-movement flags (session only)
-    function toggleLineMoved(name) { lineMoved.has(name) ? lineMoved.delete(name) : lineMoved.add(name); }
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-    let dataMode = 'loading'; // 'live' | 'cached' | 'error'
-
-    // ─── TARGETS — personal player watchlist ─────────────────────────────────
-    let targetSet = new Set(JSON.parse(localStorage.getItem('diamond_targets') || '[]'));
-    function saveTargets() { localStorage.setItem('diamond_targets', JSON.stringify([...targetSet])); }
-    function toggleTarget(name) {
-      targetSet.has(name) ? targetSet.delete(name) : targetSet.add(name);
-      saveTargets();
-      updateTargetsBadge();
-      render();
-    }
-    function updateTargetsBadge() {
-      const ct = document.getElementById('targetsCt');
-      if (!ct) return;
-      if (targetSet.size > 0) { ct.textContent = targetSet.size; ct.style.display = ''; }
-      else ct.style.display = 'none';
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // MLB STATS API — live fetch
-    // ═══════════════════════════════════════════════════════════════════════════
-    function fmtDate(d) {
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${d.getFullYear()}-${m}-${day}`;
-    }
-    function displayDate(d) {
-      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
-    }
-
-    // Map MLB team abbreviations to our internal codes
-    const TEAM_MAP = {
-      'TOR': 'TOR', 'BAL': 'BAL', 'NYY': 'NYY', 'TB': 'TBR', 'BOS': 'BOS', 'CLE': 'CLE',
-      'DET': 'DET', 'CWS': 'CWS', 'MIN': 'MIN', 'KC': 'KC', 'HOU': 'HOU', 'LAA': 'LAA',
-      'OAK': 'ATH', 'ATH': 'ATH', 'SEA': 'SEA', 'TEX': 'TEX', 'NYM': 'NYM', 'PHI': 'PHI',
-      'ATL': 'ATL', 'MIA': 'MIA', 'WSH': 'WSH', 'CHC': 'CHC', 'STL': 'STL', 'MIL': 'MIL',
-      'CIN': 'CIN', 'PIT': 'PIT', 'SF': 'SF', 'COL': 'COL', 'LAD': 'LAD', 'ARI': 'ARI', 'SD': 'SD',
-    };
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SERVER API — all data from diamond_server.py running on localhost:8765
-    // ═══════════════════════════════════════════════════════════════════════════
-    const API_BASE = (window.location.protocol === 'file:' || !window.location.host)
-      ? 'http://localhost:8765'
-      : window.location.origin;
-    let autoRefreshTimer = null;
-    const REFRESH_MS = 15 * 60 * 1000; // 15 minutes
-
-    async function fetchFromServer(dateStr) {
-      const resp = await fetch(`${API_BASE}/api/data?date=${dateStr}`, { cache: 'no-store' });
-      if (!resp.ok) throw new Error(`Server error ${resp.status}`);
-      return resp.json();
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // LOAD DAY — fetches everything from Python server, falls back gracefully
-    // ═══════════════════════════════════════════════════════════════════════════
-    async function loadDay(dateObj) {
-      setStatus('loading', 'LOADING...');
-      document.getElementById('top5wrap').innerHTML = '';
-      document.getElementById('injstrip').innerHTML = '';
-      document.getElementById('board').innerHTML = `
-    <div class="loading">
-      <span class="spin"></span>FETCHING LIVE DATA — ${displayDate(dateObj)}...
+// ═══════════════════════════════════════════════════
+// TOP PICKS
+// ═══════════════════════════════════════════════════
+function renderPicks() {
+  if(!serverTop5.length){ document.getElementById('picksStrip').style.display='none'; return; }
+  document.getElementById('picksStrip').style.display = '';
+  const labels = ['#1 PICK','#2','#3','#4','#5'];
+  document.getElementById('picksRow').innerHTML = serverTop5.map((p,i)=>{
+    const t = p.tier||tierOf(p.score||0);
+    const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
+    return `<div class="pick-card c${t}${i===0?' rank1':''}" onclick="scrollToGame('${p.gameId||''}')">
+      <div class="pick-photo">⚾${photo}</div>
+      <div class="pick-info">
+        <div class="pick-rank${i===0?' gold':''}">${labels[i]}</div>
+        <div class="pick-name">${p.name}</div>
+        <div class="pick-sub">${p.team} · ${p.pos||''} · vs ${p.pitcher||'TBD'}</div>
+      </div>
+      <div class="pick-score-wrap">
+        <div class="pick-score">${p.score}</div>
+        <div class="pick-tier-lbl">${t}</div>
+        <div class="pick-prob">${p.hrProb||''}${p.hrProb?'%':''}</div>
+      </div>
     </div>`;
-      updateDateUI(dateObj);
+  }).join('');
+}
 
-      // Clear any existing auto-refresh
-      if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null; }
+// ═══════════════════════════════════════════════════
+// INJURY BAR
+// ═══════════════════════════════════════════════════
+function renderInjuryBar() {
+  const names = serverInjuries.slice(0,30);
+  if(!names.length){ document.getElementById('injBar').innerHTML=''; return; }
+  document.getElementById('injBar').innerHTML = `
+  <div class="inj-bar">
+    <div class="inj-hd">IL / OUT</div>
+    <div class="inj-chips">${names.map(n=>`<span class="inj-chip">${n}</span>`).join('')}</div>
+  </div>`;
+}
 
-      const dateStr = fmtDate(dateObj);
-      try {
-        const data = await fetchFromServer(dateStr);
+// ═══════════════════════════════════════════════════
+// GAME CARD
+// ═══════════════════════════════════════════════════
+function condBadges(g) {
+  const wx = activeWX[g.id]||{};
+  const badges = [];
+  // Wind
+  if(wx.dome) badges.push(`<span class="cbdg wc">DOME</span>`);
+  else if((wx.w||0)<3) badges.push(`<span class="cbdg wc">CALM</span>`);
+  else if(wx.d==='out') badges.push(`<span class="cbdg wo">↑${wx.w}mph OUT</span>`);
+  else if(wx.d==='in')  badges.push(`<span class="cbdg wi">↓${wx.w}mph IN</span>`);
+  else badges.push(`<span class="cbdg wc">↔${wx.w||0}mph X</span>`);
+  // Temp
+  if(wx.t) badges.push(`<span class="cbdg tmp">${wx.t}°F</span>`);
+  // Park factor
+  const pf = g.pf||100;
+  if(pf>=120) badges.push(`<span class="cbdg pf-hi">PF ${pf} HR PARK</span>`);
+  else if(pf>=108) badges.push(`<span class="cbdg pf-hi">PF ${pf}</span>`);
+  else if(pf<=93) badges.push(`<span class="cbdg pf-lo">PF ${pf} PITCHER</span>`);
+  else badges.push(`<span class="cbdg pf-md">PF ${pf}</span>`);
+  // Game total
+  if(g.gameTotal) badges.push(`<span class="cbdg tot">O/U ${g.gameTotal}</span>`);
+  // Ump
+  if(g.hpUmp && Math.abs(g.hpUmp)>=1) badges.push(`<span class="cbdg ump">⚖ UMP ${g.hpUmp>0?'+':''}${g.hpUmp}</span>`);
+  return badges.join('');
+}
 
-        // Store server-computed top5 and injury list
-        serverTop5 = data.top5 || [];
-        serverInjuries = data.injuryList || [];
+function pitcherPill(pitcher, teamAbbr) {
+  const ec = eraClass(pitcher.era);
+  return `<div class="gc-pp ${ec}">
+    <span class="pp-tm">${teamAbbr}</span>
+    <span class="pp-nm">${pitcher.n}</span>
+    <span class="pp-era ${ec}">${pitcher.era.toFixed(2)}</span>
+    <span class="pp-hand">${pitcher.h}HP</span>
+    <span class="pp-dots">${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued)}</span>
+  </div>`;
+}
 
-        // Map server response
-        activeGames = (data.games || []).map(g => ({
-          id: g.id,
-          aw: g.away,
-          hm: g.home,
-          time: g.time,
-          venue: g.venue,
-          pf: g.parkFactor,
-          isDome: g.isDome,
-          ap: {
-            n: g.awayPitcher.name,
-            h: g.awayPitcher.hand || 'R',
-            era: g.awayPitcher.era || 4.50,
-            fb: g.awayPitcher.fbPct || 38,
-            vel: g.awayPitcher.vel || 92.5,
-            q: g.awayPitcher.quality || 'mid'
-          },
-          hp: {
-              n: g.homePitcher.name,
-              h: g.homePitcher.hand || 'R',
-              era: g.homePitcher.era || 4.50,
-              fb: g.homePitcher.fbPct || 38,
-              vel: g.homePitcher.vel || 92.5,
-              q: g.homePitcher.quality || 'mid'
-            },
-            // Pre-computed player projections from server (ALL active MLB hitters)
-            serverPlayers: g.players || [],
-            _fromAPI: true
-          }));
+function miniPickHtml(p, g) {
+  const c = scoreColor(p.tier);
+  const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
+  const badge = p.lineupPos > 0 ? ` · #${p.lineupPos}` : (p.hotStreak?' · 🔥':'');
+  return `<div class="gc-mini">
+    <div class="gc-mini-photo">⚾${photo}</div>
+    <div class="gc-mini-info">
+      <div class="gc-mini-name">${p.name.split(' ').slice(-1)[0]}</div>
+      <div class="gc-mini-sub">${p.team}${badge}</div>
+    </div>
+    <div class="gc-mini-score" style="color:${c}">${p.score}</div>
+  </div>`;
+}
 
-        // Extract weather mapping
-        activeWX = {};
-        for (const g of data.games || []) {
-          if (g.weather) {
-            activeWX[g.id] = {
-              t: g.weather.temp,
-              w: g.weather.wind_mph,
-              d: g.weather.direction,
-              rh: g.weather.humidity,
-              baro: g.weather.pressure,
-              n: g.weather.note
-            };
-          }
-        }
+function renderGameCard(g) {
+  const allPlayers = buildPlayers(g);
+  let filtered = [...allPlayers].sort((a,b)=>b.score-a.score);
+  if(activeTab==='stars')     filtered = filtered.filter(p=>p.score>=80);
+  if(activeTab==='good')      filtered = filtered.filter(p=>p.score>=65);
+  if(activeTab==='hot')       filtered = filtered.filter(p=>p.hotStreak);
+  if(activeTab==='platoon')   filtered = filtered.filter(p=>p.platoon>=8);
+  if(activeTab==='confirmed') filtered = filtered.filter(p=>p.confirmed);
+  if(activeTab==='targets')   filtered = filtered.filter(p=>targetSet.has(p.name));
+  if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
+  if(!filtered.length && activeTab!=='all') return '';
 
-        // Set UI state
-        setStatus('live', 'LIVE');
-        dataMode = 'live';
+  const topPicks = allPlayers.sort((a,b)=>b.score-a.score).slice(0,2);
+  const isExp = expandedGame === g.id;
+  const wx = activeWX[g.id]||{};
 
-        // Rerender
-        render();
-
-        // Schedule auto-refresh
-        autoRefreshTimer = setTimeout(() => { loadDay(currentDate); }, REFRESH_MS);
-
-      } catch (err) {
-        console.warn("Could not connect to Python backend, showing fallback screen:", err);
-        setStatus('err', 'NO SERVER');
-        dataMode = 'error';
-        showNoServerScreen(err.message);
-      }
-    }
-
-    function setStatus(cls, text) {
-      const el = document.getElementById('dataStatus');
-      el.className = `status ${cls}`;
-      el.textContent = text;
-    }
-
-    function updateDateUI(d) {
-      document.getElementById('dateDisplay').textContent = displayDate(d);
-      document.getElementById('mastDate').textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
-      const isToday = d.toDateString() === (new Date()).toDateString();
-      document.getElementById('todayBtn').classList.toggle('on', isToday);
-    }
-
-    function showNoServerScreen(errorMsg) {
-      document.getElementById('top5wrap').innerHTML = '';
-      document.getElementById('injstrip').innerHTML = '';
-      document.getElementById('board').innerHTML = `
-    <div class="no-server-screen">
-      <div class="ns-icon">🔌</div>
-      <div class="ns-title">Diamond Server Offline</div>
-      <div class="ns-reason">Reason: ${errorMsg}</div>
-      <div class="ns-steps">
-        <div class="ns-step">
-          <div class="ns-num">1</div>
-          <div class="ns-text">Ensure the live server script is running: run <code>python3 diamond_server.py</code> in your terminal.</div>
+  return `<div class="game-card${isExp?' expanded':''}" id="gc-${g.id}">
+    <div class="gc-head" onclick="toggleGame('${g.id}')">
+      <div class="gc-top">
+        <div>
+          <div class="gc-matchup">${g.aw} <span style="color:var(--muted)">@</span> ${g.hm}</div>
+          <div class="gc-meta">${g.time} · ${g.venue}</div>
         </div>
-        <div class="ns-step">
-          <div class="ns-num">2</div>
-          <div class="ns-text">Keep the terminal tab running, then refresh this page or click retry below.</div>
-        </div>
+        ${wx.dome?'<span class="gc-live">DOME</span>':''}
       </div>
-      <div class="ns-alt">
-        <strong>Note:</strong> The server retrieves real-time Statcast metrics, Open-Meteo hour-by-hour park coordinates weather, and official lineups to score batters.
+      <div class="gc-pitchers-row">
+        ${pitcherPill(g.ap, g.aw)}
+        ${pitcherPill(g.hp, g.hm)}
       </div>
-      <button class="ns-retry" onclick="loadDay(currentDate)">RETRY CONNECTION</button>
+      <div class="gc-conds">${condBadges(g)}</div>
+      <div class="gc-picks-row">${topPicks.map(p=>miniPickHtml(p,g)).join('')}</div>
     </div>
-  `;
-    }
-
-    function buildGamePlayers(g) {
-      const wx = activeWX[g.id] || { t: 72, w: 5, d: 'cross', rh: 55, baro: 1013, n: '' };
-      const ump = activeUMP[g.id] || null;
-      const wa = windAdj(wx);
-
-      // ── Use server pre-computed players (ALL active MLB hitters) ──────────────
-      if (g.serverPlayers && g.serverPlayers.length) {
-        return g.serverPlayers.map(sp => {
-          const isAway = sp.team === g.aw;
-          const pitcherObj = isAway ? g.hp : g.ap;
-          const sc = sp.score || 0;
-          const t = sp.tier || tier(sc);
-          const bats = sp.bats || 'R';
-          return {
-            name:  sp.name,
-            mlbId: sp.mlbId || null,
-            team:  sp.team,
-            pos:   sp.pos || '',
-            G: sp.G || 0,
-            HR: sp.HR || 0,
-            hrPct: sp.hrPct || 0,
-            SLG: sp.SLG || 0,
-            OPS: sp.OPS || 0,
-            bats,
-            barrel: sp.barrel || 0,
-            hardHit: sp.hardHit || 0,
-            iso: sp.ISO || 0,
-            chase: 28,
-            sweet: sp.sweetSpot || 36,
-            pullPct: sp.pullPct || 0,
-            travel: 0,
-            lineMoved: false,
-            pitcher: pitcherObj,
-            pitcherRecentEra: sp.pitcherRecentEra || pitcherObj.era || 4.50,
-            pitcherFatigued: sp.pitcherFatigued || false,
-            lineupPos: sp.lineupPos || 0,
-            confirmed: sp.confirmed || false,
-            recentHR: sp.recentHR || 0,
-            recentHRPct: sp.recentHRPct || 0,
-            hotStreak: sp.hotStreak || false,
-            hotMonth: sp.hotMonth || false,
-            isHome: sp.isHome || false,
-            monthHRPct: sp.monthHRPct || 0,
-            oppBullpenEra: sp.oppBullpenEra || 4.50,
-            pitcherBarrelAllowed: sp.pitcherBarrelAllowed || 0,
-            hpUmp: sp.hpUmp || '',
-            umpScore: sp.umpScore || 0,
-            hrProb:      sp.hrProb      || 0,
-            ppLine:      sp.ppLine      ?? null,
-            ppType:      sp.ppType      || '',
-            sprintSpeed: sp.sprintSpeed || null,
-            gameTotal:   sp.gameTotal   || 0,
-            h2h:         sp.h2h         || null,
-            score: sc,
-            tier: t,
-            ml: mlabel(sc),
-            breakdown: [],
-            windAdj: wa,
-            platoon: platAdj(bats, pitcherObj.h),
-            fat: sp.pitcherFatigued || fatFlag(pitcherObj),
-            gameId: g.id
-          };
-        });
-      }
-
-      // ── Fallback: local PL array ───────────────────────────────────────────────
-      const teamPls = PL.filter(p => p[1] === g.aw || p[1] === g.hm);
-      return teamPls.map(p => {
-        const pitcher = p[1] === g.aw ? g.hp : g.ap;
-        const sc = calcScore(p, pitcher, g.pf, wx, ump);
-        const [, , , G, HR, SLG, OPS, type, bats, barrel, hardHit, iso, chase, sweet, , travel, lineMoved] = p;
-        return {
-          name: p[0],
-          team: p[1],
-          pos: p[2],
-          G, HR,
-          hrPct: G > 0 ? (HR / G) * 100 : 0,
-          SLG, OPS, type, bats, barrel, hardHit, iso, chase, sweet, travel, lineMoved,
-          pitcher,
-          score: sc,
-          tier: tier(sc),
-          ml: mlabel(sc),
-          breakdown: breakdown(p, pitcher, g.pf, wx, ump),
-          windAdj: wa,
-          platoon: platAdj(bats, pitcher ? pitcher.h : 'R'),
-          fat: fatFlag(pitcher),
-          gameId: g.id
-        };
-      });
-    }
-
-    function renderInjuryStrip() {
-      const names = serverInjuries.length ? serverInjuries : Array.from(IL);
-      if (!names.length) return;
-      const html = `
-    <div class="inj-strip">
-      <div class="inj-strip-hd">OUT / QUESTIONABLE (IL)</div>
-      <div class="inj-chips">
-        ${names.map(name => `<span class="inj-chip">${name}</span>`).join('')}
-      </div>
+    <div class="gc-footer" onclick="toggleGame('${g.id}')">
+      <span>▼ ${allPlayers.length} PLAYERS${filtered.length<allPlayers.length?' · '+filtered.length+' MATCH':''}</span>
+      <span class="gc-chev${isExp?' open':''}">▼</span>
     </div>
-  `;
-      document.getElementById('injstrip').innerHTML = html;
-    }
+    ${isExp ? renderGameDetail(g, filtered) : ''}
+  </div>`;
+}
 
-    // ─── TOP 5 PROJECTIONS ────────────────────────────────────────────────────
-    function getTop5() {
-      // Use server-computed top5 when available (covers ALL MLB hitters)
-      if (serverTop5.length) {
-        return serverTop5.map(p => ({
-          name: p.name,
-          team: p.team,
-          pos: p.pos || '',
-          HR: p.HR || 0,
-          hrPct: p.hrPct || 0,
-          OPS: p.OPS || 0,
-          barrel: p.barrel || 0,
-          hardHit: p.hardHit || 0,
-          iso: p.ISO || 0,
-          score: p.score || 0,
-          tier: p.tier || tier(p.score || 0),
-          pitcher: p.pitcher || 'TBD',
-          pitcherEra: p.pitcherEra || 4.50,
-          game: p.gameId || '',
-          gameId: p.gameId || ''
-        }));
-      }
-      // Fallback: build from local PL array
-      const all = [];
-      for (const g of activeGames) {
-        const wx = activeWX[g.id] || { t: 72, w: 5, d: 'cross', rh: 55, baro: 1013, n: '' };
-        const ump = activeUMP[g.id] || null;
-        for (const p of PL) {
-          const [, team] = p;
-          if (IL.has(p[0])) continue;
-          if (team !== g.aw && team !== g.hm) continue;
-          if (all.find(x => x.name === p[0])) continue;
-          const pitcher = team === g.aw ? g.hp : g.ap;
-          const sc = calcScore(p, pitcher, g.pf, wx, ump);
-          const t = tier(sc);
-          const [, , , G, HR, , OPS, , bats, barrel, hardHit, iso, chase] = p;
-          const hrPct = G > 0 ? (HR / G) * 100 : 0;
-          all.push({
-            name: p[0], team, pos: p[2], HR, hrPct, OPS, barrel, hardHit, iso, score: sc, tier: t,
-            pitcher: pitcher.n, pitcherEra: pitcher.era, game: `${g.aw}@${g.hm}`, gameId: g.id
-          });
-        }
-      }
-      return all.sort((a, b) => b.score - a.score).slice(0, 5);
-    }
-
-    function getGameTopPick(g) {
-      // Use server players when available
-      if (g.serverPlayers && g.serverPlayers.length) {
-        const top = g.serverPlayers.reduce((best, p) =>
-          (!best || p.score > best.score) ? p : best, null);
-        return top ? { name: top.name, team: top.team, score: top.score, tier: top.tier || tier(top.score) } : null;
-      }
-      // Fallback
-      const wx = activeWX[g.id] || { t: 72, w: 5, d: 'cross', rh: 55, baro: 1013, n: '' };
-      const ump = activeUMP[g.id] || null;
-      let best = null;
-      for (const p of PL) {
-        const [, team] = p;
-        if (IL.has(p[0])) continue;
-        if (team !== g.aw && team !== g.hm) continue;
-        const pitcher = team === g.aw ? g.hp : g.ap;
-        const sc = calcScore(p, pitcher, g.pf, wx, ump);
-        if (!best || sc > best.score) best = { name: p[0], team, score: sc, tier: tier(sc) };
-      }
-      return best;
-    }
-
-    function renderTop5() {
-      const top = getTop5();
-      if (!top.length) { document.getElementById('top5wrap').innerHTML = ''; return; }
-      const dateLabel = displayDate(currentDate);
-      const rankLabels = ['#1 PICK', '#2', '#3', '#4', '#5'];
-      const html = `
-  <div class="top5-wrap">
-    <div class="top5-hd">
-      <span class="top5-title">⬥ TOP 5 HR PROJECTIONS</span>
-      <span class="top5-date">${dateLabel}</span>
+// ═══════════════════════════════════════════════════
+// GAME DETAIL (expanded)
+// ═══════════════════════════════════════════════════
+function pitcherDetailCard(pitcher, teamAbbr) {
+  const ec = eraClass(pitcher.era);
+  return `<div class="pitcher-detail-card ${ec}">
+    <div class="pdc-team">${teamAbbr}</div>
+    <div class="pdc-name">${pitcher.n} <span class="pdc-hand">${pitcher.h}HP</span></div>
+    <div class="pdc-stats">
+      <div class="pdc-stat"><span class="lbl">ERA</span><span class="val ${ec}">${pitcher.era.toFixed(2)}</span></div>
+      <div class="pdc-stat"><span class="lbl">REC.ERA</span><span class="val ${eraClass(pitcher.recentEra)}">${pitcher.recentEra.toFixed(2)}</span></div>
+      <div class="pdc-stat"><span class="lbl">FB%</span><span class="val">${pitcher.fb||38}%</span></div>
     </div>
-    <div class="top5-grid">
-      ${top.map((p, i) => {
-        const isTop = i === 0;
-        const pills = [];
-        if (p.barrel >= 14) pills.push(`<span class="top5-pill good">BARREL ${p.barrel.toFixed(1)}%</span>`);
-        if (p.hrPct >= 20) pills.push(`<span class="top5-pill hot">HR/G ${p.hrPct.toFixed(1)}%</span>`);
-        if (p.pitcherEra >= 5.0) pills.push(`<span class="top5-pill hot">P.ERA ${p.pitcherEra}</span>`);
-        return `<div class="top5-card">
-          <div class="top5-rank${isTop ? ' gold' : ''}">${rankLabels[i]}</div>
-          <div class="top5-name">${p.name}</div>
-          <div class="top5-team">${p.team} · ${p.pos}</div>
-          <div class="top5-score ${p.tier}">${p.score}</div>
-          <div class="top5-lbl">COMPOSITE</div>
-          <div class="top5-meta">${pills.join('')}<span class="top5-pill">${p.HR} HR · ${p.OPS ? p.OPS.toFixed(3) : '—'} OPS</span></div>
-          <div class="top5-vs">vs ${p.pitcher} · ${p.pitcherEra} ERA</div>
-        </div>`;
-      }).join('')}
+    <div class="pdc-form">
+      <span class="pdc-form-lbl">L5:</span>
+      ${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued)}
+      ${pitcher.fatigued?'<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--red);margin-left:5px">⚡ FATIGUED</span>':''}
     </div>
   </div>`;
-      document.getElementById('top5wrap').innerHTML = html;
-    }
+}
 
-    // ── Collection filter applied to a game's player list ─────────────────────
-    function getFilteredPlayers(g) {
-      let pl = buildGamePlayers(g).sort((a,b) => b.score - a.score);
-      switch(activeTab) {
-        case 'stars':   pl = pl.filter(p => p.score >= 80); break;
-        case 'good':    pl = pl.filter(p => p.score >= 65); break;
-        case 'hot':     pl = pl.filter(p => p.hotStreak); break;
-        case 'platoon': pl = pl.filter(p => p.platoon >= 8); break;
-      }
-      if(searchQ){
-        const sq = searchQ.toLowerCase();
-        pl = pl.filter(p => p.name.toLowerCase().includes(sq) || p.team.toLowerCase().includes(sq));
-      }
-      return pl;
-    }
+function renderGameDetail(g, players) {
+  const {confirmed, projected} = sortedPlayers(players);
+  const wx = activeWX[g.id]||{};
+  const sp0 = g.serverPlayers && g.serverPlayers[0];
+  const umpName = sp0 ? (sp0.hpUmp||'') : '';
 
-    // ── Mini pick card shown on game card ──────────────────────────────────────
-    function renderMiniPick(p) {
-      const tc = p.tier==='S'?'#3fb950':p.tier==='A'?'#e3b341':p.tier==='B'?'#c87000':'#58a6ff';
-      const sc = p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--a2)';
-      const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg` : '';
-      const badge = p.hotStreak ? '🔥' : p.confirmed && p.lineupPos > 0 ? `#${p.lineupPos}` : '';
-      const isTargeted = targetSet.has(p.name);
-      const statLine = [
-        p.hrPct > 0 && `HR ${p.hrPct.toFixed(1)}%`,
-        p.barrel > 0 && `${p.barrel.toFixed(1)}% BBL`,
-        p.HR > 0 && `${p.HR} HR`,
-      ].filter(Boolean).slice(0, 2).join(' · ');
-      return `<div class="mini-pick">
-        <div class="mini-photo" style="border-color:${tc}">⚾
-          ${photoUrl?`<img src="${photoUrl}" alt="" onerror="this.style.display='none'">`:''}</div>
-        <div class="mini-info">
-          <div class="mini-name" style="display:flex;align-items:center;gap:4px;">${p.name.split(' ').pop()}${isTargeted?'<span title="In Targets" style="font-size:9px;">🎯</span>':''}</div>
-          <div class="mini-sub">${p.team} · ${p.pos}${badge?' · '+badge:''}</div>
-          ${statLine?`<div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);margin-top:1px;">${statLine}</div>`:''}
-        </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <div class="mini-score" style="color:${sc}">${p.score}</div>
-          <div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);">${p.tier} TIER</div>
-        </div>
-      </div>`;
-    }
+  let tableRows = '';
+  if(confirmed.length){
+    tableRows += `<tr class="section-row"><td colspan="8">✓ Confirmed Lineup (${confirmed.length})</td></tr>`;
+    tableRows += confirmed.map(p=>playerRow(p,g)).join('');
+  }
+  if(projected.length){
+    tableRows += `<tr class="section-row"><td colspan="8">Projected / Not Yet Confirmed (${projected.length})</td></tr>`;
+    tableRows += projected.map(p=>playerRow(p,g)).join('');
+  }
 
-    // ── Full game detail (shown when card is expanded) ─────────────────────────
-    function renderGameDetail(g, players) {
-      const wx = activeWX[g.id] || {t:72,w:5,d:'cross',rh:55,baro:1013,n:''};
-      const sp0 = g.serverPlayers && g.serverPlayers[0];
-      const gameTotal = g.gameTotal || (sp0 ? sp0.gameTotal||0 : 0);
-      const hpUmp = sp0 ? sp0.hpUmp||'' : '';
-      const wInline = windInline(wx), wAlert = windAlert(wx);
-      const pb = pfBadge(g.pf);
-      return `<div class="gc-detail" onclick="event.stopPropagation()">
-        <div class="gc-park-strip">
-          <span class="bdg ${pb.c}">${pb.t}</span>
-          <span class="bdg btmp">🌡 ${wx.t}°F</span>
-          ${wInline}${wAlert}
-          ${gameTotal?`<span class="bdg" style="background:${gameTotal>=9.5?'#0d2d1a':'#2d2200'};color:${gameTotal>=9.5?'var(--green)':'var(--gold)'};border:1px solid ${gameTotal>=9.5?'#1a5a34':'#5a4400'}">O/U ${gameTotal}</span>`:''}
-          ${hpUmp?`<span class="bdg" style="background:var(--cream);color:var(--muted);border:1px solid var(--rule)">⚖ ${hpUmp.split(' ').slice(-1)[0]}</span>`:''}
-          ${g._fromAPI?`<span class="bdg" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">● LIVE</span>`:''}
-          <span style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-left:auto">${wx.n}</span>
-        </div>
-        <div class="gc-pitcher-strip">
-          <span class="${pClass(g.ap)} pl">${g.aw}: ${g.ap.n} · ${g.ap.h}HP · ${g.ap.era} ERA</span>
-          <span class="${pClass(g.hp)} pl">${g.hm}: ${g.hp.n} · ${g.hp.h}HP · ${g.hp.era} ERA</span>
-        </div>
-        <div class="gc-table-wrap">
-          <table class="pt">
-            <thead><tr>
-              <th style="width:62px"></th>
-              <th>PLAYER</th>
-              <th>MATCHUP</th>
-              <th class="r">HR</th>
-              <th class="r">BARREL</th>
-              <th class="r">SCORE</th>
-            </tr></thead>
-            <tbody>${players.map(p => row(p)).join('')}</tbody>
-          </table>
-        </div>
-      </div>`;
-    }
-
-    // ── Game card (compact, shown in grid) ─────────────────────────────────────
-    function renderGameCard(g) {
-      const players = getFilteredPlayers(g);
-      if (!players.length && activeTab !== 'all') return '';
-      const allPlayers = buildGamePlayers(g).sort((a,b) => b.score - a.score);
-      const topPicks = allPlayers.slice(0, 2);
-      const isExpanded = expandedGame === g.id;
-      const wl = wlabel(activeWX[g.id] || {});
-      return `<div class="game-card${isExpanded?' expanded':''}" id="gc-${g.id}" onclick="toggleGameCard('${g.id}')">
-        <div class="gc-header">
-          <div class="gc-top">
-            <div>
-              <div class="gc-matchup">${g.aw} @ ${g.hm}</div>
-              <div class="gc-meta">${g.time} · ${g.venue}</div>
-            </div>
-            <span class="bdg ${wl.c}" style="align-self:flex-start">${wl.t}</span>
-          </div>
-          <div class="gc-picks">
-            ${topPicks.map(p => renderMiniPick(p)).join('')}
-          </div>
-        </div>
-        <div class="gc-expand-btn">
-          <span>${isExpanded?'▲ HIDE':'▼ SEE ALL'} ${allPlayers.length} PLAYERS</span>
-        </div>
-        ${isExpanded ? renderGameDetail(g, players.length ? players : allPlayers) : ''}
-      </div>`;
-    }
-
-    // ── Main render ────────────────────────────────────────────────────────────
-    function render() {
-      renderInjuryStrip();
-
-      const isSearch  = activeTab === 'search';
-      const isTargets = activeTab === 'targets';
-      const isSystem  = activeTab === 'system';
-      const isSpecial = isSearch || isTargets || isSystem;
-
-      document.getElementById('searchPanel').style.display  = isSearch  ? '' : 'none';
-      document.getElementById('targetsPanel').style.display = isTargets ? '' : 'none';
-      document.getElementById('systemPanel').style.display  = isSystem  ? '' : 'none';
-      document.getElementById('top5wrap').style.display     = isSpecial ? 'none' : '';
-
-      if (isSearch)  { document.getElementById('board').innerHTML = ''; return; }
-      if (isTargets) { renderTargetsPanel(); document.getElementById('board').innerHTML = ''; return; }
-      if (isSystem)  { renderSystemPanel();  document.getElementById('board').innerHTML = ''; return; }
-
-      renderTop5();
-
-      if (!activeGames.length) {
-        document.getElementById('board').innerHTML = '<div class="empty-msg">NO GAMES FOUND FOR THIS DATE</div>';
-        return;
-      }
-
-      let html = '<div class="games-grid">';
-      for (const g of activeGames) html += renderGameCard(g);
-      html += '</div>';
-      document.getElementById('board').innerHTML = html || '<div class="empty-msg">NO GAMES MATCH THIS COLLECTION</div>';
-    }
-
-    // ── TARGETS panel ─────────────────────────────────────────────────────────
-    function renderTargetsPanel() {
-      const el = document.getElementById('targetsPanel');
-      if (!targetSet.size) {
-        el.innerHTML = `<div style="padding:50px 0;text-align:center;font-family:'Chivo Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;">
-          🎯 NO TARGETS YET<br><br>
-          <span style="font-size:9px;line-height:2.2;display:block;max-width:300px;margin:0 auto;">
-            Click the <strong style="color:var(--gold)">★</strong> star on any player row to add them to your personal watchlist. Targets persist across sessions.
-          </span></div>`;
-        return;
-      }
-      // Gather all targeted players from today's games
-      const today = [];
-      const seenNames = new Set();
-      for (const g of activeGames) {
-        for (const p of buildGamePlayers(g)) {
-          if (targetSet.has(p.name) && !seenNames.has(p.name)) {
-            today.push(p); seenNames.add(p.name);
-          }
-        }
-      }
-      today.sort((a, b) => b.score - a.score);
-      const notInGames = [...targetSet].filter(n => !seenNames.has(n));
-      el.innerHTML = `
-        <div style="padding:14px 0;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <span style="font-family:'Chivo Mono',monospace;font-size:11px;font-weight:700;letter-spacing:3px;">🎯 TARGETS — MY WATCHLIST</span>
-            <span style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--muted);">${targetSet.size} PLAYER${targetSet.size!==1?'S':''}</span>
-            <button onclick="targetSet.clear();saveTargets();updateTargetsBadge();renderTargetsPanel();" style="margin-left:auto;background:transparent;border:1px solid var(--rule);color:var(--muted);font-family:'Chivo Mono',monospace;font-size:8px;padding:4px 12px;cursor:pointer;border-radius:2px;letter-spacing:1px;">CLEAR ALL</button>
-          </div>
-          ${today.length ? `
-          <table class="pt" style="margin-bottom:10px;">
-            <thead><tr>
-              <th style="width:62px"></th>
-              <th>PLAYER</th>
-              <th>MATCHUP</th>
-              <th class="r">HR</th>
-              <th class="r">BARREL</th>
-              <th class="r">SCORE</th>
-            </tr></thead>
-            <tbody>${today.map(p => row(p)).join('')}</tbody>
-          </table>` : `<div style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--muted);padding:12px 0 8px;">Your targets aren't in today's lineup yet — check back after lineups post.</div>`}
-          ${notInGames.length ? `
-          <div style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;margin-top:4px;">NOT PLAYING TODAY</div>
-          ${notInGames.map(n => `
-            <div style="padding:8px 12px;background:var(--cream);border:1px solid var(--rule);margin-bottom:3px;border-radius:2px;display:flex;align-items:center;justify-content:space-between;">
-              <span style="font-weight:700;font-size:13px;">${n}</span>
-              <button onclick="toggleTarget('${n.replace(/'/g,"\\'").replace(/"/g,'\\"')}');event.stopPropagation()" title="Remove target" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;transition:color .1s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">✕</button>
-            </div>`).join('')}` : ''}
-        </div>`;
-    }
-
-    // ── SYSTEM panel ─────────────────────────────────────────────────────────
-    function renderSystemPanel() {
-      const el = document.getElementById('systemPanel');
-      const weights = [
-        { label: 'Power Base (HR/G rate)',      pts: 28, color: 'var(--accent)' },
-        { label: 'OPS + SLG',                   pts: 22, color: 'var(--gold)' },
-        { label: 'Pitcher Vulnerability',        pts: 18, color: '#f0654a' },
-        { label: 'Park + Wind + Weather',        pts: 15, color: 'var(--teal)' },
-        { label: 'Barrel% + Hard Hit%',          pts: 13, color: 'var(--green)' },
-        { label: 'Platoon Advantage (L/R)',      pts:  8, color: 'var(--a2)' },
-        { label: 'Line Movement',                pts:  3, color: 'var(--purple)' },
-      ];
-      const factors = [
-        { n: '1 · Handedness + Pitch Mix',   c: 'c1', pts: 'Platoon ±8pts',     desc: 'Platoon splits (L/R): OPS & ISO vs pitcher hand. FB% pitchers vs barrel% batters. Chase rate — low chasers see more FBs in zone. Batter performance vs primary pitch type.' },
-        { n: '2 · Park + Altitude + Humidor',c: 'c2', pts: 'Park factor ±8pts', desc: 'Statcast HR park factor (100=avg). Coors Field: 150 PF + altitude drag reduction. Humidor status. Stadium dimensions and wall height. Microclimate wind tunnels.' },
-        { n: '3 · Full Weather Stack',        c: 'c2', pts: 'Weather ±7pts',     desc: 'Wind speed + direction vector vs park orientation. Barometric pressure — low = less air resistance. Humidity — dry air reduces drag. Temp bonus +2.5ft/10°F above 70°F. Roof status.' },
-        { n: '4 · Batter Analytics',          c: 'c3', pts: 'Power base 28pts',  desc: 'HR/game (21-day rolling, 60% weight vs 40% season). Barrel% (EV + 8–32° launch). Hard Hit Rate ≥95mph. xSLG, xwOBA, ISO. Sweet spot %. Chase rate. Whiff rate. Pull rate.' },
-        { n: '5 · Pitcher Vulnerabilities',   c: 'c4', pts: 'Pitcher 18pts',     desc: 'ERA + HR/9 vs league avg. Hard contact allowed. Fly ball % (high = HR risk). FB velocity sub-91mph flag. Fatigue: ≤3 days rest OR ≥100 pitches last outing.' },
-        { n: '6 · Rolling Averages',          c: 'c5', pts: 'Form 60% weight',   desc: '15–30 day rolling windows. Pitchers: last 10 starts. Hitters: last 20 games. Season stats 40%, recent form 60%. Platoon splits min 50 PA sample.' },
-        { n: '7 · ML Model',                  c: 'c5', pts: 'AUC 0.83–0.87',    desc: 'Binary: HR=1, no HR=0. Logistic regression baseline AUC ~0.74. XGBoost/LightGBM on Statcast tabular data. Features: barrel%, xSLG, pitcher xBA, park factor, wind, handedness.' },
-        { n: '8 · Line Movement',             c: 'c6', pts: '+3pts signal',      desc: 'Opening vs current HR prop line shift. Sharp signal: line moving toward yes = market confidence. Public vs sharp split via bet% vs handle%.' },
-        { n: '9 · Umpire Tendencies',         c: 'c6', pts: 'Ump ±2pts',         desc: 'HP ump strike zone expansion/contraction. Liberal zones → pitcher goes off-speed early. Tight zones → more FBs in zone for batter.' },
-        { n: '10 · Travel + Fatigue',         c: 'c1', pts: 'Travel ±2pts',      desc: 'Cross-timezone travel: East→West vs West→East jet lag. Consecutive games played. Days since last off day. Road team 3-city trip Day 6+.' },
-        { n: '11 · Spray Angle + Pull',       c: 'c3', pts: 'Pull rate factor',  desc: 'Pull% to short porch or favorable wall distance. Hard-hit pull% amplified at CBP, Yankee Stadium. Spray angle vs stadium dimensions. OAA.' },
-        { n: '12 · Score Calibration',        c: 'c4', pts: '0–99 composite',    desc: 'Power Base 28pts + OPS/SLG 22pts + Pitcher Vuln 18pts + Park/Wind/Weather 15pts + Barrel+HH 13pts + Platoon 8pts + Line Move 3pts. S≥80, A≥65, B≥50, C≥35.' },
-      ];
-      const cMap = { c1:'var(--accent)', c2:'var(--gold)', c3:'var(--green)', c4:'var(--a2)', c5:'var(--purple)', c6:'var(--teal)' };
-      el.innerHTML = `
-        <div style="padding:16px 0;">
-          <div style="font-family:'Chivo Mono',monospace;font-size:11px;font-weight:700;letter-spacing:3px;margin-bottom:16px;">⚙ SYSTEM — 12-FACTOR COMPOSITE MODEL</div>
-
-          <!-- Score breakdown / weight bars -->
-          <div style="background:var(--cream);border:1px solid var(--rule);border-radius:4px;padding:16px;margin-bottom:16px;">
-            <div style="font-family:'Chivo Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Score Weight Breakdown (total: 99 pts)</div>
-            ${weights.map(w => `
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-                <div style="font-family:'Chivo Mono',monospace;font-size:9px;width:185px;flex-shrink:0;color:var(--ink);">${w.label}</div>
-                <div style="flex:1;background:#010409;border-radius:2px;height:12px;overflow:hidden;">
-                  <div style="width:${Math.round((w.pts/99)*100)}%;background:${w.color};height:100%;border-radius:2px;opacity:.85;"></div>
-                </div>
-                <div style="font-family:'Chivo Mono',monospace;font-size:10px;font-weight:700;color:${w.color};width:38px;text-align:right;">${w.pts}pts</div>
-              </div>`).join('')}
-            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
-              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#0d2d1a;color:var(--green);border:1px solid #1a5a34;padding:3px 10px;border-radius:2px;font-weight:700;">S ≥ 80</span>
-              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#2d2200;color:var(--gold);border:1px solid #5a4400;padding:3px 10px;border-radius:2px;font-weight:700;">A ≥ 65</span>
-              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#2d1f00;color:#e3b341;border:1px solid #5a3d00;padding:3px 10px;border-radius:2px;font-weight:700;">B ≥ 50</span>
-              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a;padding:3px 10px;border-radius:2px;font-weight:700;">C ≥ 35</span>
-              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:var(--cream);color:var(--muted);border:1px solid var(--rule);padding:3px 10px;border-radius:2px;font-weight:700;">D &lt; 35</span>
-            </div>
-          </div>
-
-          <!-- 12 factors -->
-          <div class="fgrid" style="margin-bottom:16px;">
-            ${factors.map(f => `
-              <div class="fc ${f.c}" style="border-left-color:${cMap[f.c]}">
-                <h4>${f.n}</h4>
-                <p><strong style="color:${cMap[f.c]}">${f.pts}</strong><br>${f.desc}</p>
-              </div>`).join('')}
-          </div>
-
-          <!-- Data sources -->
-          <div style="background:var(--cream);border:1px solid var(--rule);border-radius:4px;padding:14px;">
-            <div style="font-family:'Chivo Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:10px;">LIVE DATA SOURCES</div>
-            <div class="arow"><span class="aname">MLB Stats API</span><span class="adesc">statsapi.mlb.com — no key needed. Today's games, probable pitchers, game times, venues, lineups.</span><span class="afree">FREE · LIVE</span></div>
-            <div class="arow"><span class="aname">Baseball Savant</span><span class="adesc">Statcast barrel%, exit velo, launch angle, xSLG, pitch-level data via pybaseball.</span><span class="afree">FREE</span></div>
-            <div class="arow"><span class="aname">Open-Meteo Weather</span><span class="adesc">Stadium lat/lng → hourly wind speed/direction, temp, humidity, barometric pressure at game time.</span><span class="afree">FREE · LIVE</span></div>
-            <div class="arow"><span class="aname">Ump Scorecards</span><span class="adesc">umpscorecards.com — per-game ump zone maps, run impact, favor scores.</span><span class="afree">FREE</span></div>
-            <div class="arow"><span class="aname">FanGraphs Leaders</span><span class="adesc">Barrel%, hard hit%, fly ball%, chase rate, whiff rate, ISO, wRC+. Rolling splits.</span><span class="afree">FREE</span></div>
-          </div>
-        </div>`;
-    }
-
-    function toggleGameCard(id) {
-      expandedGame = expandedGame === id ? null : id;
-      render();
-      if (expandedGame) {
-        setTimeout(() => {
-          const el = document.getElementById(`gc-${id}`);
-          if (el) el.scrollIntoView({behavior:'smooth', block:'nearest'});
-        }, 50);
-      }
-    }
-
-    function row(p) {
-      const sel        = legs.find(l => l.name === p.name);
-      const tierColor  = p.tier==='S'?'#3fb950':p.tier==='A'?'#e3b341':p.tier==='B'?'#c87000':p.tier==='C'?'#58a6ff':'#484f58';
-      const scoreColor = p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--muted)';
-
-      // Headshot — MLB retro CDN
-      const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg` : '';
-      const photo = `<div class="card-photo-wrap">
-        <div class="card-photo-bg" style="border-color:${tierColor}">⚾
-          ${photoUrl?`<img src="${photoUrl}" alt="" onerror="this.style.display='none'">`:''}</div>
-        <div class="card-sel-dot"></div>
-      </div>`;
-
-      // Compact flags — only the 2 most important
-      const flags = [];
-      if (p.hotStreak)                       flags.push(`<span class="flag" style="background:#2d1f00;color:var(--gold);border:1px solid #5a3d00">🔥 HOT</span>`);
-      if (p.confirmed && p.lineupPos > 0)    flags.push(`<span class="flag" style="background:#0d2d1a;color:var(--green);border:1px solid #1a5a34">#${p.lineupPos} ✓</span>`);
-      else if (!p.confirmed)                 flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">LINEUP?</span>`);
-      if (p.platoon >= 8)                    flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R ✓</span>`);
-      if (lineMoved.has(p.name))             flags.push(`<span class="flag flag-lm">📈 LINE</span>`);
-      const isTargeted = targetSet.has(p.name);
-      const targetBtn = `<button title="${isTargeted?'Remove from Targets':'Add to Targets'}" onclick="event.stopPropagation();toggleTarget('${p.name.replace(/'/g,"\\'").replace(/"/g,'\\"')}')" style="background:transparent;border:1px solid ${isTargeted?'var(--gold)':'var(--rule)'};color:${isTargeted?'var(--gold)':'#484f58'};font-size:11px;padding:1px 5px;cursor:pointer;border-radius:2px;transition:all .1s;margin-top:2px;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='${isTargeted?'var(--gold)':'var(--rule)'}';this.style.color='${isTargeted?'var(--gold)':'#484f58'}'">${isTargeted?'★':'☆'}</button>`;
-
-      // Key intel under matchup — max 3 things
-      const intel = [];
-      if (p.hrProb)                          intel.push(`<span class="sc neu">${p.hrProb}% chance</span>`);
-      if (p.ppLine != null)                  intel.push(`<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine}</span>`);
-      if (p.pitcherFatigued)                 intel.push(`<span class="sc neg">P fatigued</span>`);
-      else if (p.pitcherBarrelAllowed >= 12) intel.push(`<span class="sc pos">P allows barrels</span>`);
-      if (p.oppBullpenEra >= 5.0)            intel.push(`<span class="sc pos">Weak bullpen</span>`);
-      if (p.h2h && p.h2h.ab >= 3) {
-        const h2hCls = p.h2h.hr >= 1 ? 'pos' : p.h2h.ops <= 0.450 ? 'neg' : '';
-        const h2hHr  = p.h2h.hr ? ` ${p.h2h.hr}HR` : '';
-        intel.push(`<span class="sc ${h2hCls}" title="Career vs this pitcher">${p.h2h.h}/${p.h2h.ab}${h2hHr} H2H</span>`);
-      }
-
-      const legData = {name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0};
-      return `<tr class="pr${sel?' pk':''}" data-leg='${JSON.stringify(legData)}' onclick="handleRowClick(this)">
-    <td style="padding:5px 4px 5px 6px">${photo}</td>
-    <td>
-      <div class="pname" style="display:flex;align-items:center;gap:6px;">${p.name} ${targetBtn}</div>
-      <div class="psub">
-        <span style="font-weight:700;color:${tierColor}">${p.team}</span> · ${p.pos}
-      </div>
-      <div style="display:flex;gap:2px;margin-top:3px;flex-wrap:wrap">${flags.join('')}</div>
-    </td>
-    <td>
-      <div class="psub" style="font-weight:700;color:var(--ink)">vs ${p.pitcher.n}</div>
-      <div class="psub">${p.pitcher.era} ERA · ${p.pitcher.h}HP</div>
-      <div class="sbc" style="margin-top:3px">${intel.join('')}</div>
-    </td>
-    <td class="pn ${p.hotStreak?'vg':'hi'}" style="font-size:13px">${p.HR}<div style="font-size:8px;color:var(--muted)">${p.hrPct.toFixed(1)}%</div></td>
-    <td class="pn ${p.barrel>=14?'vg':'hi'}" style="font-size:13px">${p.barrel.toFixed(1)}<div style="font-size:8px;color:var(--muted)">BBL%</div></td>
-    <td style="text-align:right;padding-right:10px">
-      <div style="font-family:'Chivo Mono',monospace;font-weight:700;font-size:24px;color:${scoreColor};line-height:1">${p.score}</div>
-      <span class="ptier t${p.tier}" style="margin-top:3px;display:inline-block">${p.tier}</span>
-    </td>
-  </tr>`;
-    }
-
-    function handleRowClick(el) {
-      try { toggleLeg(JSON.parse(el.dataset.leg)); } catch (e) { }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PARLAY SLIP
-    // ═══════════════════════════════════════════════════════════════════════════
-    function toggleLeg(p) {
-      const idx = legs.findIndex(l => l.name === p.name);
-      if (idx >= 0) legs.splice(idx, 1); else if (legs.length < 6) legs.push(p);
-      renderSlip(); render();
-    }
-    function removeLeg(n) { legs = legs.filter(l => l.name !== n); renderSlip(); render(); }
-    function clearSlip() { legs = []; renderSlip(); render(); }
-    function renderSlip() {
-      const n = legs.length;
-      document.getElementById('slipCt').textContent = n;
-      document.getElementById('slip').classList.toggle('has-legs', n > 0);
-      const bd = document.getElementById('slipBd');
-      if (!n) {
-        bd.innerHTML = '<div class="slip-nil">Click any player row<br>to add to slip.<br><br>Max 6 legs.<br>No same-game parlays.</div>';
-        document.getElementById('slipFt').style.display = 'none';
-        return;
-      }
-      bd.innerHTML = legs.map(l => `<div class="sleg"><div class="sli"><div class="sln">${l.name}</div><div class="slm">${l.team} · vs ${l.pitcher}</div></div><div class="sls">${l.score}</div><button class="sld" onclick="removeLeg('${l.name.replace(/'/g, "\\'")}');event.stopPropagation()">✕</button></div>`).join('');
-      document.getElementById('slipFt').style.display = 'block';
-      document.getElementById('sfL').textContent = n;
-      const avg = Math.round(legs.reduce((s, l) => s + l.score, 0) / n);
-      document.getElementById('sfA').textContent = avg + '/99';
-      const dec = legs.reduce((a, l) => { const imp = Math.max(.07, .26 - (l.score - 50) * .004); return a * (1 / imp); }, 1);
-      document.getElementById('sfO').textContent = `+${Math.round((dec - 1) * 100).toLocaleString()}`;
-      const hasSGP = new Set(legs.map(l => l.gameId)).size < n;
-      document.getElementById('sfW').textContent = hasSGP ? '⚠ Same-game legs detected' : '';
-      document.getElementById('scopyBtn').disabled = n < 2;
-    }
-    function copySlip() {
-      const txt = `DIAMOND HR PARLAY — ${displayDate(currentDate)}\n` + legs.map(l => `${l.name} (${l.team}) vs ${l.pitcher} | Comp:${l.score}`).join('\n') + `\n\nEst Odds: ${document.getElementById('sfO').textContent}`;
-      navigator.clipboard?.writeText(txt);
-      const b = document.getElementById('scopyBtn'); b.textContent = '✓ COPIED'; setTimeout(() => b.textContent = 'COPY SLIP', 2000);
-    }
-
-    function sendToGambly() {
-      if (!legs.length) return;
-      const playerList = legs.map(l => `${l.name} to hit a home run`).join(', ');
-      const msg = `I want a parlay for ${playerList} for ${displayDate(currentDate)}. Can you build this slip?`;
-      navigator.clipboard?.writeText(msg).then(() => {
-        const b = document.getElementById('sgamblyBtn');
-        b.textContent = '✓ COPIED — OPENING GAMBLY';
-        setTimeout(() => { b.textContent = '⚡ SEND TO GAMBLY'; }, 3000);
-        window.open('https://gambly.com', '_blank');
-      });
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // DATE NAVIGATION
-    // ═══════════════════════════════════════════════════════════════════════════
-    function shiftDay(delta) {
-      const d = new Date(currentDate);
-      d.setDate(d.getDate() + delta);
-      currentDate = d;
-      loadDay(currentDate);
-    }
-    function goToday() {
-      currentDate = new Date(); currentDate.setHours(0, 0, 0, 0);
-      loadDay(currentDate);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // EVENTS
-    // ═══════════════════════════════════════════════════════════════════════════
-    function toggleAcc(id, hdr) { document.getElementById(id).classList.toggle('open'); hdr.classList.toggle('open'); }
-    // Collection tab clicks
-    document.getElementById('collNav').addEventListener('click', e => {
-      const b = e.target.closest('.ctab'); if (!b) return;
-      activeTab = b.dataset.tab;
-      document.querySelectorAll('.ctab').forEach(t => t.classList.remove('on'));
-      b.classList.add('on');
-      expandedGame = null;
-      render();
-    });
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PLAYER LOOKUP — search any MLB hitter via /api/search
-    // ═══════════════════════════════════════════════════════════════════════════
-    let _searchTimer = null;
-    function debouncedPlayerSearch(q) {
-      clearTimeout(_searchTimer);
-      const res = document.getElementById('playerResults');
-      if (q.length < 2) { res.innerHTML = ''; return; }
-      _searchTimer = setTimeout(() => playerSearch(q), 320);
-    }
-
-    async function playerSearch(q) {
-      const res = document.getElementById('playerResults');
-      const st = document.getElementById('searchSt');
-      st.style.display = '';
-      st.textContent = '...';
-      try {
-        const resp = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
-        if (!resp.ok) throw new Error(`Server error ${resp.status}`);
-        const results = await resp.json();
-        st.style.display = 'none';
-        if (!results.length) {
-          res.innerHTML = '<div style="font-family:\'Chivo Mono\',monospace;font-size:9px;color:var(--muted);padding:8px 0;">No hitters found matching that name.</div>';
-          return;
-        }
-        res.innerHTML = results.map(renderPlayerCard).join('');
-      } catch (e) {
-        st.style.display = 'none';
-        res.innerHTML = `<div style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--accent);padding:8px 0;">⚠ ${e.message} — make sure the server is running.</div>`;
-      }
-    }
-
-    function renderPlayerCard(p) {
-      const sc = p.score || 0;
-      const t = p.tier || tier(sc);
-      const scoreColor = t === 'S' ? 'var(--green)' : t === 'A' ? 'var(--gold)' : t === 'B' ? '#c87000' : 'var(--muted)';
-      const ilBadge = p.onIL
-        ? '<span style="background:#ffeaea;color:var(--accent);border:1px solid #f0b0a0;font-family:\'Chivo Mono\',monospace;font-size:7px;padding:1px 6px;border-radius:1px;margin-left:5px;font-weight:700;">IL</span>'
-        : '';
-      const ops3 = p.OPS ? `.${String(Math.round(p.OPS * 1000)).padStart(3, '0').slice(-3)}` : '—';
-      const slg3 = p.SLG ? `.${String(Math.round(p.SLG * 1000)).padStart(3, '0').slice(-3)}` : '—';
-      const iso3 = p.ISO ? `.${String(Math.round(p.ISO * 1000)).padStart(3, '0').slice(-3)}` : '—';
-      const chip = (label, val, cls = '') =>
-        `<span class="sc${cls ? ' ' + cls : ''}" style="font-size:8px;">${label} ${val}</span>`;
-      return `
-  <div style="background:var(--card);border:1px solid var(--rule);border-radius:2px;padding:10px 13px;margin-bottom:5px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-    <div style="flex:1;min-width:140px;">
-      <div style="font-weight:700;font-size:14px;line-height:1.2;">${p.name}${ilBadge}</div>
-      <div style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-top:3px;">${p.team} · ${p.pos || '?'} · Bats ${p.bats} · PF ${p.parkFactor}</div>
+  return `<div class="gc-detail">
+    <div class="gcd-conditions">
+      ${condBadges(g)}
+      ${umpName?`<span class="cbdg ump" style="margin-left:auto">⚖ ${umpName}</span>`:''}
+      <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-left:auto;">${wx.n||''}</span>
     </div>
-    <div style="text-align:center;min-width:54px;">
-      <div style="font-family:'Chivo Mono',monospace;font-size:26px;font-weight:700;color:${scoreColor};line-height:1;">${sc}</div>
-      <div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);">SCORE</div>
-      <span class="ptier t${t}" style="margin-top:3px;display:inline-block;">${t}</span>
+    <div class="gcd-pitcher-strip">
+      ${pitcherDetailCard(g.ap, g.aw)}
+      ${pitcherDetailCard(g.hp, g.hm)}
     </div>
-    <div style="flex:2;min-width:180px;">
-      <div class="sbc" style="margin-bottom:4px;">
-        ${chip('G', p.G)} ${chip('HR', p.HR)} ${chip('HR%', p.hrPct + '%', p.hrPct >= 20 ? 'pos' : '')}
-        ${chip('OPS', ops3, p.OPS >= 0.850 ? 'pos' : '')}
-        ${chip('SLG', slg3)} ${chip('ISO', iso3)}
-        ${p.barrel ? chip('BBL', p.barrel + '%', p.barrel >= 14 ? 'pos' : '') : ''}
-        ${p.hardHit ? chip('HH', p.hardHit + '%', p.hardHit >= 48 ? 'pos' : '') : ''}
-        ${p.avgEV ? chip('EV', p.avgEV) : ''}
-        ${p.xwOBA ? chip('xwOBA', p.xwOBA, p.xwOBA >= 0.380 ? 'pos' : '') : ''}
-        ${p.sprintSpeed ? chip('SPD', p.sprintSpeed + 'ft/s') : ''}
-        ${p.ppLine != null ? `<span class="sc" style="color:var(--purple);background:#1a0d2d;border-color:#4a2080">PP ${p.ppLine} HR</span>` : ''}
-      </div>
-      <div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);">${p.note}</div>
+    <div class="pt-wrap">
+      <table class="pt">
+        <thead><tr>
+          <th class="td-ph"></th>
+          <th onclick="setSort('name')">PLAYER <span class="th-sort${sortCol==='name'?' '+sortDir:''}"></span></th>
+          <th>VS PITCHER</th>
+          <th class="r" onclick="setSort('HR')">HR <span class="th-sort${sortCol==='HR'?' '+sortDir:''}"></span></th>
+          <th class="r" onclick="setSort('barrel')">BARREL <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
+          <th>EDGES</th>
+          <th class="r" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
+          <th></th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
     </div>
   </div>`;
-    }
+}
 
-    // ── INIT ──────────────────────────────────────────────────────────────────
-    renderSlip();
-    updateTargetsBadge();
-    loadDay(currentDate); // auto-loads today every time file opens
-  </script>
+// ═══════════════════════════════════════════════════
+// PLAYER ROW
+// ═══════════════════════════════════════════════════
+function playerRow(p, g) {
+  const sel = legs.find(l=>l.name===p.name);
+  const isTgt = targetSet.has(p.name);
+  const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
+  const sc = scoreColor(p.tier);
+  const edges = computeEdges(p, g);
+  const probWidth = Math.min(100, (p.hrProb||0) / 32 * 100);
+
+  // H2H display
+  let h2hHtml = '';
+  if(p.h2h && p.h2h.ab >= 3) {
+    const h2hColor = p.h2h.hr >= 1 ? 'var(--green)' : p.h2h.ops <= 0.45 ? 'var(--red)' : 'var(--sub)';
+    h2hHtml = `<div class="vs-h2h" style="color:${h2hColor}">${p.h2h.h}/${p.h2h.ab} AB · ${p.h2h.hr}HR · .${String(Math.round((p.h2h.ops||0)*1000)).padStart(3,'0')} H2H</div>`;
+  }
+
+  const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
+
+  return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
+  <td class="td-ph">
+    <div class="p-photo-wrap">
+      <div class="p-photo">⚾${photo}</div>
+      <div class="sel-dot"></div>
+    </div>
+  </td>
+  <td class="td-player">
+    <div class="p-name">
+      ${p.name}
+      <span class="p-team">${p.team}</span>
+      <span class="p-pos">${p.pos||'?'}</span>
+      ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
+    </div>
+    <div class="p-sub">Bats ${p.bats}${p.hotStreak?' · 🔥 HOT':''}</div>
+  </td>
+  <td class="td-vs">
+    <div class="vs-pitcher">vs ${p.pitcher.n}</div>
+    <div class="vs-era" style="color:${['danger','mid','elite'].includes(eraClass(p.pitcher.era))?{danger:'var(--red)',mid:'var(--amber)',elite:'var(--green)'}[eraClass(p.pitcher.era)]:'var(--sub)'}">${p.pitcher.era.toFixed(2)} ERA · ${p.pitcher.h}HP</div>
+    ${h2hHtml}
+  </td>
+  <td class="td-num r">
+    <span class="big${p.hotStreak?' hi-green':''}">${p.HR}</span>
+    <span class="sml">${p.hrPct.toFixed(1)}%</span>
+  </td>
+  <td class="td-num r">
+    <span class="big${p.barrel>=14?' hi-green':p.barrel>=10?' hi-amber':''}">${p.barrel.toFixed(1)}</span>
+    <span class="sml">BBL%</span>
+  </td>
+  <td class="td-edges">
+    <div class="edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
+  </td>
+  <td class="td-score">
+    <div class="score-num score-${p.tier}">${p.score}</div>
+    <span class="tier-badge t${p.tier}">${p.tier}</span>
+    <div class="prob-bar"><div class="prob-fill" style="width:${probWidth}%"></div></div>
+  </td>
+  <td class="td-act">
+    <button class="star-btn${isTgt?' on':''}" onclick="event.stopPropagation();toggleTarget('${p.name.replace(/'/g,"&#39;").replace(/"/g,'&quot;')}')" title="${isTgt?'Remove target':'Add to targets'}">★</button>
+    <button class="add-btn${sel?' added':''}" onclick="event.stopPropagation();toggleLeg(JSON.parse(this.closest('tr').dataset.leg))">${sel?'✓ IN':'+ ADD'}</button>
+  </td>
+</tr>`;
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN RENDER
+// ═══════════════════════════════════════════════════
+function render() {
+  renderInjuryBar();
+  renderPicks();
+  updateTargetsBadge();
+
+  const isSearch  = activeTab === 'search';
+  const isTargets = activeTab === 'targets';
+  document.getElementById('searchPanel').style.display  = isSearch  ? '' : 'none';
+  document.getElementById('targetsPanel').style.display = isTargets ? '' : 'none';
+
+  if(isSearch)  { document.getElementById('board').innerHTML=''; return; }
+  if(isTargets) { renderTargetsPanel(); document.getElementById('board').innerHTML=''; return; }
+
+  if(!activeGames.length) {
+    document.getElementById('board').innerHTML='<div class="empty-msg">NO GAMES FOUND FOR THIS DATE</div>';
+    return;
+  }
+
+  let html = '<div class="games-grid">';
+  for(const g of activeGames) html += renderGameCard(g);
+  html += '</div>';
+  document.getElementById('board').innerHTML = html || '<div class="empty-msg">NO GAMES MATCH CURRENT FILTER</div>';
+}
+
+function setSort(col) {
+  if(sortCol===col) sortDir = sortDir==='desc'?'asc':'desc';
+  else { sortCol=col; sortDir='desc'; }
+  render();
+}
+
+function scrollToGame(id) {
+  if(!id) return;
+  expandedGame = id;
+  render();
+  setTimeout(()=>{ const el=document.getElementById(`gc-${id}`); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },60);
+}
+
+function toggleGame(id) {
+  expandedGame = expandedGame===id ? null : id;
+  render();
+  if(expandedGame) setTimeout(()=>{
+    const el=document.getElementById(`gc-${expandedGame}`);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+  },50);
+}
+
+// ═══════════════════════════════════════════════════
+// TARGETS
+// ═══════════════════════════════════════════════════
+function toggleTarget(name) {
+  targetSet.has(name) ? targetSet.delete(name) : targetSet.add(name);
+  saveTargets(); updateTargetsBadge(); render();
+}
+function updateTargetsBadge() {
+  const ct = document.getElementById('targetsCt');
+  if(!ct) return;
+  if(targetSet.size>0){ ct.textContent=targetSet.size; ct.style.display=''; }
+  else ct.style.display='none';
+}
+function renderTargetsPanel() {
+  const el = document.getElementById('targetsPanel');
+  if(!targetSet.size){ el.innerHTML=`<div class="empty-msg">🎯 NO TARGETS<br><br><span style="font-size:9px">Click ★ on any player to add to watchlist</span></div>`; return; }
+  const today=[], seen=new Set();
+  for(const g of activeGames) for(const p of buildPlayers(g)) {
+    if(targetSet.has(p.name)&&!seen.has(p.name)){ today.push(p); seen.add(p.name); }
+  }
+  today.sort((a,b)=>b.score-a.score);
+  const notPlaying=[...targetSet].filter(n=>!seen.has(n));
+  el.innerHTML=`<div style="padding-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:2px">🎯 TARGETS — ${targetSet.size} PLAYER${targetSet.size!==1?'S':''}</span>
+      <button onclick="targetSet.clear();saveTargets();updateTargetsBadge();renderTargetsPanel()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:8px;padding:4px 12px;cursor:pointer;border-radius:5px;transition:all .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">CLEAR ALL</button>
+    </div>
+    ${today.length?`<div class="pt-wrap"><table class="pt"><thead><tr><th class="td-ph"></th><th>PLAYER</th><th>VS PITCHER</th><th class="r">HR</th><th class="r">BARREL</th><th>EDGES</th><th class="r">SCORE</th><th></th></tr></thead><tbody>${today.map(p=>{const g=activeGames.find(g=>g.id===p.gameId)||activeGames[0];return playerRow(p,g);}).join('')}</tbody></table></div>`:'<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:12px 0">Targets not in today\'s lineup yet — check back after lineups post.</div>'}
+    ${notPlaying.length?`<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin:12px 0 6px">NOT PLAYING TODAY</div>
+    ${notPlaying.map(n=>`<div style="padding:8px 12px;background:var(--card);border:1px solid var(--border);margin-bottom:4px;border-radius:6px;display:flex;align-items:center;justify-content:space-between"><span style="font-weight:700">${n}</span><button onclick="toggleTarget('${n.replace(/'/g,"&#39;")}');event.stopPropagation()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;transition:color .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button></div>`).join('')}`:''}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// PARLAY SLIP
+// ═══════════════════════════════════════════════════
+function handleRowClick(el) {
+  try { toggleLeg(JSON.parse(el.dataset.leg)); } catch(e){}
+}
+function toggleLeg(p) {
+  const idx = legs.findIndex(l=>l.name===p.name);
+  if(idx>=0) legs.splice(idx,1); else if(legs.length<6) legs.push(p);
+  renderSlip(); render();
+}
+function removeLeg(name) { legs=legs.filter(l=>l.name!==name); renderSlip(); render(); }
+function clearSlip() { legs=[]; renderSlip(); render(); }
+function renderSlip() {
+  const n = legs.length;
+  document.getElementById('slipCt').textContent = n;
+  const bd = document.getElementById('slipBody');
+  if(!n){
+    bd.innerHTML='<div class="slip-empty">Click any player row<br>to add to slip.<br><br>Max 6 legs.<br>No same-game parlays.</div>';
+    document.getElementById('slipFt').style.display='none';
+    return;
+  }
+  bd.innerHTML = legs.map(l=>`<div class="slip-leg">
+    <div class="sl-info">
+      <div class="sl-name">${l.name}</div>
+      <div class="sl-sub">${l.team} · vs ${l.pitcher}</div>
+    </div>
+    <div class="sl-score">${l.score}</div>
+    <button class="sl-rm" onclick="removeLeg('${l.name.replace(/'/g,"\\'")}');event.stopPropagation()">✕</button>
+  </div>`).join('');
+  document.getElementById('slipFt').style.display='';
+  document.getElementById('sfLegs').textContent = n;
+  const avg = Math.round(legs.reduce((s,l)=>s+l.score,0)/n);
+  document.getElementById('sfAvg').textContent = avg+'/99';
+  const dec = legs.reduce((a,l)=>{ const imp=Math.max(.07,.26-(l.score-50)*.004); return a*(1/imp); },1);
+  document.getElementById('sfOdds').textContent = `+${Math.round((dec-1)*100).toLocaleString()}`;
+  const hasSGP = new Set(legs.map(l=>l.gameId)).size < n;
+  document.getElementById('sfWarn').textContent = hasSGP ? '⚠ Same-game legs detected' : '';
+  document.getElementById('slipCopyBtn').disabled = n < 2;
+}
+function copySlip() {
+  const txt = `DIAMOND HR PARLAY — ${displayDate(currentDate)}\n`
+    + legs.map(l=>`${l.name} (${l.team}) vs ${l.pitcher} | Composite: ${l.score}`).join('\n')
+    + `\n\nEst Odds: ${document.getElementById('sfOdds').textContent}`
+    + `\nGenerated: ${new Date().toLocaleString()}`;
+  navigator.clipboard?.writeText(txt);
+  const b = document.getElementById('slipCopyBtn'); b.textContent='✓ COPIED';
+  setTimeout(()=>b.textContent='COPY SLIP', 2200);
+}
+
+// ═══════════════════════════════════════════════════
+// PLAYER SEARCH
+// ═══════════════════════════════════════════════════
+let _searchTimer = null;
+function debounceSearch(q) {
+  clearTimeout(_searchTimer);
+  const res=document.getElementById('searchResults');
+  if(q.length<2){ res.innerHTML=''; return; }
+  _searchTimer = setTimeout(()=>doSearch(q), 320);
+}
+async function doSearch(q) {
+  const res=document.getElementById('searchResults');
+  const st=document.getElementById('searchStatus');
+  st.style.display=''; st.textContent='...';
+  try {
+    const r = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`,{cache:'no-store'});
+    if(!r.ok) throw new Error(`Server error ${r.status}`);
+    const data = await r.json();
+    st.style.display='none';
+    if(!data.length){ res.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:8px 0">No hitters found.</div>'; return; }
+    res.innerHTML = data.map(renderSearchCard).join('');
+  } catch(e) {
+    st.style.display='none';
+    res.innerHTML=`<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--red);padding:8px 0">⚠ ${e.message}</div>`;
+  }
+}
+function renderSearchCard(p) {
+  const t = p.tier||tierOf(p.score||0);
+  const c = scoreColor(t);
+  const ops3 = p.OPS ? p.OPS.toFixed(3) : '—';
+  const chips = [
+    `<span class="src-chip">${p.G}G</span>`,
+    `<span class="src-chip${p.HR>=15?' hi':''}">${p.HR}HR</span>`,
+    `<span class="src-chip${p.hrPct>=20?' hi':''}">${p.hrPct}% HR/G</span>`,
+    p.barrel?`<span class="src-chip${p.barrel>=14?' hi':''}">${p.barrel}% BBL</span>`:'',
+    p.hardHit?`<span class="src-chip">${p.hardHit}% HH</span>`:'',
+    p.avgEV?`<span class="src-chip">${p.avgEV} EV</span>`:'',
+    `<span class="src-chip">${ops3} OPS</span>`,
+    p.xwOBA?`<span class="src-chip">${p.xwOBA.toFixed(3)} xwOBA</span>`:'',
+    p.ppLine!=null?`<span class="src-chip" style="color:var(--purple)">PP ${p.ppLine}</span>`:'',
+    p.sprintSpeed?`<span class="src-chip">${p.sprintSpeed}ft/s</span>`:'',
+  ].filter(Boolean).join('');
+  return `<div class="src-card">
+    <div class="src-main">
+      <div class="src-name">${p.name}${p.onIL?'<span class="src-il">IL</span>':''}</div>
+      <div class="src-meta">${p.team} · ${p.pos||'?'} · Bats ${p.bats||'?'} · PF ${p.parkFactor||100}</div>
+      <div class="src-chips">${chips}</div>
+    </div>
+    <div class="src-score-wrap">
+      <div class="src-score" style="color:${c}">${p.score||0}</div>
+      <div class="src-lbl">COMPOSITE</div>
+      <span class="tier-badge t${t}">${t}</span>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+// DATE NAV
+// ═══════════════════════════════════════════════════
+function shiftDay(d) {
+  const nd = new Date(currentDate); nd.setDate(nd.getDate()+d);
+  currentDate=nd; loadDay(currentDate);
+}
+function goToday() {
+  currentDate=new Date(); currentDate.setHours(0,0,0,0); loadDay(currentDate);
+}
+
+// ═══════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════
+document.getElementById('filterBar').addEventListener('click', e => {
+  const b = e.target.closest('.ftab'); if(!b) return;
+  activeTab = b.dataset.tab;
+  document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on','on-g'));
+  b.classList.add('on');
+  expandedGame = null;
+  render();
+});
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+renderSlip();
+updateTargetsBadge();
+loadDay(currentDate);
+</script>
 </body>
-
 </html>
