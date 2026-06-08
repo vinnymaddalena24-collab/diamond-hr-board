@@ -423,7 +423,7 @@ const REFRESH_MS = 15 * 60 * 1000;
 // ═══════════════════════════════════════════════════
 let currentDate = new Date(); currentDate.setHours(0,0,0,0);
 let activeTab = 'all', searchQ = '';
-let expandedGame = null;
+let expandedGames = new Set(); // all games expanded by default
 let legs = [];
 let activeGames = [], activeWX = {};
 let serverTop5 = [], serverInjuries = [];
@@ -551,6 +551,8 @@ async function loadDay(dateObj) {
     setStatus('live','LIVE');
     document.getElementById('dataFooter').style.display = '';
     document.getElementById('footerTimestamp').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    // Auto-expand all games so players are immediately visible
+    expandedGames = new Set(activeGames.map(g => g.id));
     render();
     autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
   } catch(err) {
@@ -732,7 +734,7 @@ function renderGameCard(g) {
   if(!filtered.length && activeTab!=='all') return '';
 
   const topPicks = allPlayers.sort((a,b)=>b.score-a.score).slice(0,2);
-  const isExp = expandedGame === g.id;
+  const isExp = expandedGames.has(g.id);
   const wx = activeWX[g.id]||{};
 
   return `<div class="game-card${isExp?' expanded':''}" id="gc-${g.id}">
@@ -923,18 +925,14 @@ function setSort(col) {
 
 function scrollToGame(id) {
   if(!id) return;
-  expandedGame = id;
+  expandedGames.add(id);
   render();
   setTimeout(()=>{ const el=document.getElementById(`gc-${id}`); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); },60);
 }
 
 function toggleGame(id) {
-  expandedGame = expandedGame===id ? null : id;
+  expandedGames.has(id) ? expandedGames.delete(id) : expandedGames.add(id);
   render();
-  if(expandedGame) setTimeout(()=>{
-    const el=document.getElementById(`gc-${expandedGame}`);
-    if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
-  },50);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1095,7 +1093,7 @@ document.getElementById('filterBar').addEventListener('click', e => {
   activeTab = b.dataset.tab;
   document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on','on-g'));
   b.classList.add('on');
-  expandedGame = null;
+  expandedGames = new Set(activeGames.map(g=>g.id)); // re-expand all on tab change
   render();
 });
 

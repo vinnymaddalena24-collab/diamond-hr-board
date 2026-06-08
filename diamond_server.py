@@ -234,8 +234,10 @@ def fetch_schedule(date_str):
         for date_entry in data.get("dates", []):
             for g in date_entry.get("games", []):
                 status = g.get("status", {}).get("abstractGameCode", "")
-                if status == "F":
-                    continue  # skip completed
+                # Include all games (F=Final shown for analysis; skip only postponed/cancelled)
+                detail_code = g.get("status", {}).get("statusCode", "")
+                if detail_code in ("PPD", "CO", "DI", "CR"):
+                    continue  # postponed / cancelled only
                 away = TEAM_MAP.get(g["teams"]["away"]["team"]["abbreviation"],
                                     g["teams"]["away"]["team"]["abbreviation"])
                 home = TEAM_MAP.get(g["teams"]["home"]["team"]["abbreviation"],
