@@ -28,7 +28,14 @@ CACHE_TTL    = 900   # 15 minutes — general data
 ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 API_TIMEOUT  = 10    # seconds — hard cap on all external API calls
-USER_AGENT   = "DiamondHRBoard/1.0"
+USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+_SAVANT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Referer": "https://baseballsavant.mlb.com/",
+    "Connection": "keep-alive",
+}
 
 # Optional: set ODDS_API_KEY env var for game totals (free at the-odds-api.com)
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY", "")
@@ -41,6 +48,16 @@ ODDS_TEAM_MAP = {
     "cardinals":"STL","brewers":"MIL","reds":"CIN","pirates":"PIT","phillies":"PHI",
     "nationals":"WSH","marlins":"MIA","orioles":"BAL","rays":"TBR","blue jays":"TOR",
     "rangers":"TEX","mariners":"SEA","athletics":"ATH","rockies":"COL",
+}
+
+# MLB official team IDs (active roster endpoint)
+MLB_TEAM_IDS = {
+    "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112,
+    "CIN": 113, "CLE": 114, "COL": 115, "CWS": 145, "DET": 116,
+    "HOU": 117, "KC":  118, "LAA": 108, "LAD": 119, "MIA": 146,
+    "MIL": 158, "MIN": 142, "NYM": 121, "NYY": 147, "ATH": 133,
+    "PHI": 143, "PIT": 134, "SD":  135, "SEA": 136, "SF":  137,
+    "STL": 138, "TBR": 139, "TEX": 140, "TOR": 141, "WSH": 120,
 }
 
 # Stadium coordinates for weather (home team → lat/lng)
@@ -148,10 +165,41 @@ def cache_set(key, data):
         _cache[key] = {"ts": time.time(), "data": data}
 
 # ── HTTP HELPER ──────────────────────────────────────────────────────────────
-def fetch(url, timeout=None):
-    req = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(req, timeout=timeout or API_TIMEOUT) as r:
-        return json.loads(r.read().decode())
+def fetch(url, timeout=None, headers=None):
+    """Fetch JSON from url. Follows HTTP 301/302/307/308 redirects manually."""
+    h = {"User-Agent": USER_AGENT}
+    if headers:
+        h.update(headers)
+    req = Request(url, headers=h)
+    try:
+        with urlopen(req, timeout=timeout or API_TIMEOUT) as r:
+            return json.loads(r.read().decode())
+    except Exception as e:
+        # urllib doesn't follow 308 — do it manually
+        import urllib.error
+        if isinstance(e, urllib.error.HTTPError) and e.code in (301, 302, 307, 308):
+            loc = e.headers.get("Location", "")
+            if loc:
+                return fetch(loc, timeout=timeout, headers=headers)
+        raise
+
+def fetch_savant(url, timeout=15):
+    """Fetch Baseball Savant CSV/JSON with full browser headers to bypass 403."""
+    req = Request(url, headers=_SAVANT_HEADERS)
+    with urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8")
+
+def _safe_float(v, default=0.0):
+    """Parse MLB API stat strings: '.295', '1.050', '0.912', etc."""
+    try:
+        s = str(v or "").strip()
+        if not s or s in ("-", "null", "None", ".---", "-.--", ""):
+            return default
+        if s.startswith("."):
+            s = "0" + s
+        return float(s)
+    except Exception:
+        return default
 
 def fetch_40man_roster():
     """Shared 40-man roster fetch — cached so injuries + rosters don't double-fetch."""
@@ -335,16 +383,11 @@ def fetch_batting_stats_savant():
 
     url = (
         "https://baseballsavant.mlb.com/leaderboard/statcast"
-        "?type=batter&year=2026&position=&team=&min=25"
+        "?type=batter&year=2026&position=&team=&min=10"
         "&csv=true"
     )
     try:
-        req = Request(url, headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "text/csv"
-        })
-        with urlopen(req, timeout=15) as r:
-            raw = r.read().decode("utf-8")
+        raw = fetch_savant(url)
 
         lines = [l for l in raw.strip().split("\n") if l]
         if len(lines) < 2:
@@ -505,7 +548,7 @@ def fetch_batting_season_stats():
 
     url = ("https://statsapi.mlb.com/api/v1/stats"
            "?stats=season&group=hitting&season=2026&sportId=1"
-           "&limit=700&sortStat=homeRuns&order=desc")
+           "&limit=1500&sortStat=gamesPlayed&order=desc")
     try:
         data = fetch(url)
         result = {}
@@ -516,20 +559,19 @@ def fetch_batting_season_stats():
             if not name: continue
             g = int(stat.get("gamesPlayed", 1) or 1)
             hr = int(stat.get("homeRuns", 0) or 0)
+            avg = _safe_float(stat.get("avg"))
+            slg = _safe_float(stat.get("slg"))
             result[name] = {
                 "G": g,
                 "HR": hr,
-                "AVG": float(stat.get("avg", ".000").replace(".","0.") if "." in str(stat.get("avg","")) else 0),
-                "OPS": float(stat.get("ops", ".000").replace(".","0.") if stat.get("ops") else 0),
-                "SLG": float(stat.get("slg", ".000").replace(".","0.") if stat.get("slg") else 0),
-                "OBP": float(stat.get("obp", ".000").replace(".","0.") if stat.get("obp") else 0),
-                "ISO": 0.0,  # calculated below
+                "AVG": avg,
+                "OPS": _safe_float(stat.get("ops")),
+                "SLG": slg,
+                "OBP": _safe_float(stat.get("obp")),
+                "ISO": round(slg - avg, 3),
                 "hrPct": round((hr / g) * 100, 1) if g > 0 else 0,
                 "paPerG": round(int(stat.get("plateAppearances", 0) or 0) / g, 1) if g > 0 else 3.8,
             }
-            avg = result[name]["AVG"]
-            slg = result[name]["SLG"]
-            result[name]["ISO"] = round(slg - avg, 3)
 
         cache_set("batting_stats", result)
         print(f"[batting] Loaded {len(result)} batters")
@@ -627,15 +669,11 @@ def fetch_home_away_splits():
                 stat = split.get("stat", {})
                 g  = int(stat.get("gamesPlayed", 1) or 1)
                 hr = int(stat.get("homeRuns", 0) or 0)
-                def _f(k):
-                    v = stat.get(k, "0") or "0"
-                    try: return float(str(v).replace(".","0.",1) if str(v).startswith(".") else v)
-                    except: return 0.0
                 if name not in result: result[name] = {}
                 result[name]["home" if is_home else "away"] = {
                     "G": g, "HR": hr,
                     "hrPct": round((hr/g)*100,1) if g>0 else 0,
-                    "OPS": _f("ops"),
+                    "OPS": _safe_float(stat.get("ops")),
                 }
         cache_set("home_away_splits", result)
         print(f"[home_away] Loaded {len(result)} batters")
@@ -663,15 +701,11 @@ def fetch_monthly_batting():
                 stat = split.get("stat", {})
                 g  = int(stat.get("gamesPlayed", 1) or 1)
                 hr = int(stat.get("homeRuns", 0) or 0)
-                def _f(k):
-                    v = stat.get(k, "0") or "0"
-                    try: return float(str(v).replace(".","0.",1) if str(v).startswith(".") else v)
-                    except: return 0.0
                 result[name] = {
                     "G_month":      g,
                     "HR_month":     hr,
                     "hrPct_month":  round((hr/g)*100,1) if g>0 else 0,
-                    "OPS_month":    _f("ops"),
+                    "OPS_month":    _safe_float(stat.get("ops")),
                 }
         cache_set(f"monthly_{month}", result)
         print(f"[monthly] Loaded {len(result)} batters")
@@ -715,17 +749,15 @@ def fetch_pitcher_savant_allowed():
         "?type=pitcher&year=2026&position=&team=&min=25&csv=true"
     )
     try:
-        req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/csv"})
-        with urlopen(req, timeout=15) as r:
-            raw = r.read().decode("utf-8")
+        raw  = fetch_savant(url)
         lines = [l for l in raw.strip().split("\n") if l]
         if len(lines) < 2: return {}
-        headers = lines[0].split(",")
+        hdrs = lines[0].split(",")
         result  = {}
         for line in lines[1:]:
             cols = line.split(",")
-            if len(cols) < len(headers): continue
-            row  = dict(zip(headers, cols))
+            if len(cols) < len(hdrs): continue
+            row  = dict(zip(hdrs, cols))
             name = row.get("player_name", "").strip()
             if not name: continue
             try:
@@ -821,17 +853,15 @@ def fetch_sprint_speed():
     url = ("https://baseballsavant.mlb.com/leaderboard/sprint_speed"
            "?min_competitive=50&player_type=batter&year=2026&csv=true")
     try:
-        req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/csv"})
-        with urlopen(req, timeout=API_TIMEOUT) as r:
-            raw = r.read().decode("utf-8")
+        raw  = fetch_savant(url)
         lines = [l for l in raw.strip().split("\n") if l]
         if len(lines) < 2: return {}
-        headers = lines[0].split(",")
+        hdrs = lines[0].split(",")
         result  = {}
         for line in lines[1:]:
             cols = line.split(",")
-            if len(cols) < len(headers): continue
-            row  = dict(zip(headers, cols))
+            if len(cols) < len(hdrs): continue
+            row  = dict(zip(hdrs, cols))
             name = row.get("player_name", "").strip()
             if not name: continue
             try:
@@ -935,11 +965,114 @@ def game_total_adj(total):
     if total <=  7.5: return -1
     return 0
 
+# ── ROSTER & MATCHUP DATA FROM MLB.COM ───────────────────────────────────────
+
+def fetch_pitcher_details_batch(pitcher_ids):
+    """Batch-fetch pitcher throwing hand from MLB people API."""
+    if not pitcher_ids: return {}
+    sorted_ids = sorted(int(i) for i in pitcher_ids if i)
+    if not sorted_ids: return {}
+    cache_key = f"pdet_{'_'.join(str(i) for i in sorted_ids)}"
+    cached = cache_get(cache_key, ttl=SPLITS_TTL)
+    if cached: return cached
+    ids_str = ",".join(str(i) for i in sorted_ids)
+    url = f"https://statsapi.mlb.com/api/v1/people?personIds={ids_str}"
+    try:
+        data = fetch(url)
+        result = {}
+        for person in data.get("people", []):
+            pid = person.get("id")
+            if pid:
+                result[pid] = {
+                    "hand":     person.get("pitchHand", {}).get("code", "R"),
+                    "fullName": person.get("fullName", ""),
+                }
+        cache_set(cache_key, result)
+        print(f"[pitcher_details] {len(result)} pitchers fetched")
+        return result
+    except Exception as e:
+        print(f"[pitcher_details] Error: {e}")
+        return {}
+
+
+def fetch_h2h_vs_pitcher(pitcher_id):
+    """Career batter-vs-pitcher matchup stats for all batters who've faced this pitcher."""
+    if not pitcher_id: return {}
+    cached = cache_get(f"h2h_{pitcher_id}", ttl=SPLITS_TTL)
+    if cached: return cached
+    url = (f"https://statsapi.mlb.com/api/v1/stats"
+           f"?stats=vsPlayer&group=hitting"
+           f"&opposingPlayerId={pitcher_id}&limit=2000")
+    try:
+        data = fetch(url)
+        result = {}
+        for group in data.get("stats", []):
+            for split in group.get("splits", []):
+                name = split.get("player", {}).get("fullName", "")
+                stat = split.get("stat", {})
+                if not name: continue
+                ab = int(stat.get("atBats", 0) or 0)
+                if ab < 3: continue
+                result[name] = {
+                    "ab":  ab,
+                    "h":   int(stat.get("hits", 0) or 0),
+                    "hr":  int(stat.get("homeRuns", 0) or 0),
+                    "rbi": int(stat.get("rbi", 0) or 0),
+                    "avg": _safe_float(stat.get("avg")),
+                    "ops": _safe_float(stat.get("ops")),
+                    "slg": _safe_float(stat.get("slg")),
+                }
+        cache_set(f"h2h_{pitcher_id}", result)
+        print(f"[h2h] Pitcher {pitcher_id}: {len(result)} batters with history")
+        return result
+    except Exception as e:
+        print(f"[h2h {pitcher_id}] Error: {e}")
+        return {}
+
+
+def fetch_active_roster_single(team_abbr):
+    """Fetch active 26-man roster for one team — who's actually available today."""
+    cached = cache_get(f"active_roster_{team_abbr}", ttl=ROSTER_TTL)
+    if cached: return cached
+    team_id = MLB_TEAM_IDS.get(team_abbr)
+    if not team_id: return set()
+    url = (f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
+           f"?rosterType=Active&season=2026")
+    try:
+        data = fetch(url)
+        names = set()
+        for p in data.get("roster", []):
+            name = p.get("person", {}).get("fullName", "")
+            if name: names.add(name)
+        cache_set(f"active_roster_{team_abbr}", names)
+        print(f"[active_roster] {team_abbr}: {len(names)} active players")
+        return names
+    except Exception as e:
+        print(f"[active_roster {team_abbr}] {e}")
+        return set()
+
+
+def h2h_adj(h2h):
+    """Score adjustment based on career H2H matchup vs this specific pitcher."""
+    if not h2h or h2h.get("ab", 0) < 3: return 0
+    ab  = h2h["ab"]
+    hr  = h2h.get("hr", 0)
+    ops = h2h.get("ops", 0.0)
+    adj = 0
+    if hr >= 3:              adj += 6
+    elif hr == 2:            adj += 4
+    elif hr == 1:            adj += 2
+    if ops >= 0.900 and ab >= 5:  adj += 2
+    elif ops <= 0.450 and ab >= 7: adj -= 2
+    return adj
+
+
 def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    recent_stats=None, pitcher_log=None, lineup_pos=0, home_team="",
                    home_away_splits=None, is_home=False,
                    monthly_stats=None, bullpen_era=4.50,
-                   pitcher_sav=None, ump_score=0.0, game_total=0.0):
+                   pitcher_sav=None, ump_score=0.0, game_total=0.0,
+                   h2h=None):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -973,25 +1106,22 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
         if m_hr > 0:
             hr_pct = m_hr * 0.25 + hr_pct * 0.75
 
-    s = 0
-    s += min(hr_pct * 2.3, 27)
-    s += min((ops - 0.600) * 36, 20)
-    s += min((slg - 0.350) * 30, 15)
-    s += min((barrel - 8) * 0.7, 8)
-    s += min((hard_hit - 40) * 0.22, 5)
-    s += min((iso - 0.180) * 18, 4)
-    s += min((sweet - 36) * 0.2, 2)
-
-    # ── 4. PA opportunity — more PA per game = more chances ───────────────────
-    if pa_per_g >= 4.5: s += 4
-    elif pa_per_g >= 4.2: s += 2
-    elif pa_per_g < 3.0: s -= 2
-
-    # ── 5. Pull factor — high pull% at short-porch parks ─────────────────────
+    # ── PROFILE: inherent power (reduced weights so stars don't auto-dominate) ──
+    profile = 0
+    profile += min(hr_pct * 1.8, 20)           # was 2.3→27; now cap at 20
+    profile += min((ops - 0.600) * 28, 14)     # was 36→20; now cap at 14
+    profile += min((slg - 0.350) * 22, 10)     # was 30→15; now cap at 10
+    profile += min((barrel - 8) * 0.7, 8)
+    profile += min((hard_hit - 40) * 0.22, 5)
+    profile += min((iso - 0.180) * 18, 4)
+    profile += min((sweet - 36) * 0.2, 2)
+    if pa_per_g >= 4.5: profile += 3
+    elif pa_per_g >= 4.2: profile += 2
+    elif pa_per_g < 3.0: profile -= 2
     if pull_pct > 40:
-        s += pull_adj(bats, home_team) * ((pull_pct - 38) / 22)
+        profile += pull_adj(bats, home_team) * ((pull_pct - 38) / 22)
 
-    # ── 6. Pitcher vulnerability ───────────────────────────────────────────────
+    # ── SITUATION: today's opportunity (increased weights — this is where VALUE hides)
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
         era = pitcher_log["recent_era"] * 0.60 + era * 0.40
@@ -1005,36 +1135,65 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     if q == "elite":  pv -= 12
     if pitcher_log and pitcher_log.get("fatigued"):          pv += 7
     if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
-    # Pitcher Savant allowed stats: barrel%/hard hit% they give up
     if pitcher_sav:
         pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
         pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
-    s += max(0, min(100, pv)) * 0.17
 
-    # ── 7. Opponent bullpen ERA — late-game HR opportunity ────────────────────
-    if bullpen_era >= 5.20:   s += 4
-    elif bullpen_era >= 4.80: s += 2
-    elif bullpen_era >= 4.50: s += 1
-    elif bullpen_era < 3.50:  s -= 2
+    situ = 0
+    situ += max(0, min(100, pv)) * 0.25        # pitcher vuln: was 0.17, now 0.25
+    situ += ((pf - 100) / 50) * 12             # park: was 8, now 12
+    situ += wind_adj(wx) * 0.70                # wind: was 0.48, now 0.70
+    situ += temp_adj(wx.get("temp", 72))
+    situ += baro_adj(wx.get("pressure", 1013))
+    situ += humid_adj(wx.get("humidity", 55))
+    situ += platoon_adj(bats, ph)
+    situ += lineup_adj(lineup_pos)
+    situ += ump_score * 2.5                    # ump: was 2.0
+    situ += game_total_adj(game_total)
+    if bullpen_era >= 5.20:   situ += 4
+    elif bullpen_era >= 4.80: situ += 2
+    elif bullpen_era >= 4.50: situ += 1
+    elif bullpen_era < 3.50:  situ -= 2
 
-    # ── 8. Park, weather, platoon ─────────────────────────────────────────────
-    s += ((pf - 100) / 50) * 8
-    s += wind_adj(wx) * 0.48
+    return max(0, min(99, round(profile + situ + h2h_adj(h2h))))
+
+
+def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
+                    bullpen_era=4.50, ump_score=0.0, game_total=0.0,
+                    bats="R", lineup_pos=0):
+    """Situational score only — how good is TODAY'S opportunity regardless of player.
+    High situ = value spot. A lower-profile player with high situ is a VALUE pick."""
+    era = pitcher_stats.get("era", 4.50)
+    if pitcher_log and pitcher_log.get("recent_era"):
+        era = pitcher_log["recent_era"] * 0.60 + era * 0.40
+    fb  = pitcher_stats.get("fbPct", 38)
+    vel = pitcher_stats.get("vel", 92.5)
+    q   = pitcher_stats.get("quality", "mid")
+    ph  = pitcher_stats.get("hand", "R")
+    pv  = 28 + (era - 3.5) * 5.5 + (fb - 38) * 0.35
+    if vel < 91:  pv += 3
+    if q == "danger": pv += 16
+    if q == "elite":  pv -= 12
+    if pitcher_log and pitcher_log.get("fatigued"):          pv += 7
+    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
+    if pitcher_sav:
+        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
+        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
+    s = max(0, min(100, pv)) * 0.25
+    s += ((pf - 100) / 50) * 12
+    s += wind_adj(wx) * 0.70
     s += temp_adj(wx.get("temp", 72))
     s += baro_adj(wx.get("pressure", 1013))
     s += humid_adj(wx.get("humidity", 55))
     s += platoon_adj(bats, ph)
-
-    # ── 9. Umpire zone ────────────────────────────────────────────────────────
-    s += ump_score * 2.0
-
-    # ── 10. Lineup position ───────────────────────────────────────────────────
     s += lineup_adj(lineup_pos)
-
-    # ── 11. Run environment (game O/U total) ──────────────────────────────────
+    s += ump_score * 2.5
     s += game_total_adj(game_total)
-
-    return max(0, min(99, round(s)))
+    if bullpen_era >= 5.20:   s += 4
+    elif bullpen_era >= 4.80: s += 2
+    elif bullpen_era >= 4.50: s += 1
+    elif bullpen_era < 3.50:  s -= 2
+    return round(max(0, min(60, s)), 1)
 
 def get_tier(score):
     if score >= 80: return "S"
@@ -1053,9 +1212,10 @@ def build_daily_data(date_str):
     # ── Step 1: Schedule first (need pitcher IDs + game list for step 2) ─────
     games = fetch_schedule(date_str)
 
-    # Collect unique pitcher IDs and game hours
+    # Collect unique pitcher IDs, game hours, and teams
     pitcher_ids = set()
     game_wx_keys = {}  # game_id → (home, hour)
+    all_game_teams = set()
     for g in games:
         for side in ["awayPitcher", "homePitcher"]:
             pid = g[side].get("id")
@@ -1070,9 +1230,11 @@ def build_daily_data(date_str):
         except:
             hour = 19
         game_wx_keys[g["id"]] = (home, hour)
+        all_game_teams.add(g["away"])
+        all_game_teams.add(g["home"])
 
     # ── Step 2: Fetch EVERYTHING in one parallel batch ────────────────────────
-    with concurrent.futures.ThreadPoolExecutor(max_workers=30) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
         # Core data
         f_batting  = ex.submit(fetch_batting_season_stats)
         f_recent   = ex.submit(fetch_recent_batting_stats, 15)
@@ -1097,6 +1259,10 @@ def build_daily_data(date_str):
         f_wx = {}
         for gid, (home, hour) in game_wx_keys.items():
             f_wx[gid] = ex.submit(fetch_weather, home, hour)
+        # Pitcher throwing hand (batch), active 26-man rosters, H2H matchups
+        f_pitcher_details = ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
+        f_active = {team: ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
+        f_h2h    = {pid: ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
 
     # Collect results safely
     def safe(f):
@@ -1119,6 +1285,12 @@ def build_daily_data(date_str):
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
     pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
     weather_map     = {gid: safe(f) for gid, f in f_wx.items()}
+    pitcher_details = safe(f_pitcher_details)
+    active_rosters  = {}
+    for team, f in f_active.items():
+        try: active_rosters[team] = f.result() or set()
+        except: active_rosters[team] = set()
+    h2h_maps = {pid: (safe(f) or {}) for pid, f in f_h2h.items()}
     _, et_hour = get_today_str()
 
     # ── Step 3: Assign pre-fetched data to games (zero network calls) ─────────
@@ -1141,6 +1313,11 @@ def build_daily_data(date_str):
             g[side]["_psav"] = psav
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
+            # Apply correct throwing hand from MLB people API
+            if pid:
+                det = pitcher_details.get(pid, {})
+                if det.get("hand"):
+                    g[side]["hand"] = det["hand"]
 
         pf = g["parkFactor"]
         wx = g["weather"]
@@ -1150,6 +1327,7 @@ def build_daily_data(date_str):
         opp_bullpen_home = bullpen.get(g["home"], 4.50)
 
         # Build player projections for this game
+        home = g["home"]   # fix: was leaking from earlier loop
         players = []
         game_teams = {g["away"], g["home"]}
 
@@ -1160,8 +1338,13 @@ def build_daily_data(date_str):
             pos = roster_info.get("pos", "")
             if pos in ("P", "SP", "RP"): continue
 
+            # Only include players on today's active 26-man roster (when data available)
+            team_active = active_rosters.get(team, set())
+            if team_active and name not in team_active:
+                continue
+
             bat_stat = dict(batting.get(name, {}))
-            if bat_stat.get("G", 0) < 5: continue
+            if bat_stat.get("G", 0) < 1: continue   # was < 5; now include anyone with ≥1 game
 
             sav          = savant.get(name, {})
             recent_stat  = recent.get(name, {})
@@ -1179,6 +1362,9 @@ def build_daily_data(date_str):
 
             bat_stat["bats"] = roster_info.get("bats", "R")
             pp_data = prizepicks.get(name, {})
+            # Career batter vs pitcher H2H matchup stats
+            opp_pid = opp_pitcher.get("id")
+            h2h = h2h_maps.get(opp_pid, {}).get(name, {}) if opp_pid else {}
             score = calc_composite(
                 bat_stat, sav, opp_pitcher, pf, wx,
                 recent_stats=recent_stat,
@@ -1192,6 +1378,7 @@ def build_daily_data(date_str):
                 pitcher_sav=pitcher_sav,
                 ump_score=ump_score,
                 game_total=game_total,
+                h2h=h2h,
             )
             tier = get_tier(score)
 
@@ -1243,10 +1430,21 @@ def build_daily_data(date_str):
                 "ppType":           pp_data.get("type", ""),
                 "sprintSpeed":      sprint_speed.get(name, None),
                 "hrProb":           hr_probability(score),
+                "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
                 "gameId":           g["id"],
                 "score":            score,
                 "tier":             tier,
             })
+
+        # ── Diagnostic: print filter counts when a game has 0 players ──────────
+        if not players:
+            n_teams  = sum(1 for _,r in rosters.items() if r.get("team","") in game_teams)
+            n_pos    = sum(1 for _,r in rosters.items() if r.get("team","") in game_teams and r.get("pos","") not in ("P","SP","RP"))
+            n_bat    = sum(1 for n,r in rosters.items() if r.get("team","") in game_teams and r.get("pos","") not in ("P","SP","RP") and batting.get(n,{}).get("G",0) >= 1)
+            sample   = [(n, r.get("team"), r.get("pos"), batting.get(n,{}).get("G",0)) for n,r in list(rosters.items()) if r.get("team","") in game_teams][:4]
+            print(f"[debug-0pl] {g['away']}@{g['home']} teams={game_teams}")
+            print(f"[debug-0pl]  in_teams={n_teams} not_pitcher={n_pos} has_batting_G>=1={n_bat}")
+            print(f"[debug-0pl]  sample={sample}")
 
         players.sort(key=lambda x: x["score"], reverse=True)
         g["players"]    = players
@@ -1460,11 +1658,12 @@ if __name__ == "__main__":
             print(f"[warm] {e}")
     threading.Thread(target=warm, daemon=True).start()
 
-    # Open browser after short delay
-    def open_browser():
-        time.sleep(1.5)
-        webbrowser.open(f"http://localhost:{PORT}")
-    threading.Thread(target=open_browser, daemon=True).start()
+    # Open browser after short delay (local only)
+    if local:
+        def open_browser():
+            time.sleep(1.5)
+            webbrowser.open(f"http://localhost:{PORT}")
+        threading.Thread(target=open_browser, daemon=True).start()
 
     try:
         server.serve_forever()

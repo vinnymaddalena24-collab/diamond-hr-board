@@ -1681,26 +1681,6 @@
       </div>
     </div>
 
-    <!-- PLAYER LOOKUP -->
-    <div class="accord">
-      <div class="acc-hd" onclick="toggleAcc('lookupBd',this)">⬥ PLAYER LOOKUP — SEARCH ANY MLB HITTER <span
-          class="chv">›</span></div>
-      <div class="acc-bd" id="lookupBd">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-          <input id="playerSearch" type="text" placeholder="Type any player name (e.g. Aaron Judge, Shohei Ohtani...)"
-            style="flex:1;background:var(--card);border:1px solid var(--rule);color:var(--ink);padding:8px 12px;font-family:'Chivo Mono',monospace;font-size:10px;border-radius:2px;outline:none;"
-            oninput="debouncedPlayerSearch(this.value)">
-          <span class="status loading" id="searchSt" style="display:none">...</span>
-        </div>
-        <div
-          style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
-          Score is <strong>base composite</strong>: player's home park, neutral league-avg pitcher, calm conditions.
-          Actual game score will differ based on real opponent, park, and weather.
-        </div>
-        <div id="playerResults"></div>
-      </div>
-    </div>
-
     <div id="injstrip"></div>
 
     <!-- COLLECTION TABS -->
@@ -1710,6 +1690,8 @@
       <button class="ctab" data-tab="good">✅ GOOD PICKS</button>
       <button class="ctab" data-tab="hot">🔥 HOT STREAKS</button>
       <button class="ctab" data-tab="platoon">L/R PLATOON</button>
+      <button class="ctab" data-tab="targets" id="targetsTab">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:#e3b341;font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
+      <button class="ctab" data-tab="system">⚙ SYSTEM</button>
       <button class="ctab" data-tab="search">🔍 PLAYER LOOKUP</button>
       <input class="csrch" id="csrch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
     </div>
@@ -1727,6 +1709,12 @@
       </div>
       <div id="playerResults"></div>
     </div>
+
+    <!-- TARGETS PANEL -->
+    <div id="targetsPanel" style="display:none;"></div>
+
+    <!-- SYSTEM PANEL -->
+    <div id="systemPanel" style="display:none;"></div>
 
     <div id="top5wrap"></div>
     <div id="board"></div>
@@ -1898,8 +1886,8 @@
       const arrow = isOut ? '↑' : isIn ? '↓' : '↔';
       const label = isOut ? 'OUT' : isIn ? 'IN' : 'CROSS';
       const color = isOut ? 'var(--accent)' : isIn ? 'var(--a2)' : 'var(--muted)';
-      const bg = isOut ? '#fff3e0' : isIn ? '#eaf0ff' : '#f5f5f5';
-      const border = isOut ? '#f0c060' : isIn ? '#a0b8e0' : 'var(--rule)';
+      const bg = isOut ? '#2d1f00' : isIn ? '#0d1f3a' : 'var(--cream)';
+      const border = isOut ? '#5a3d00' : isIn ? '#1a3a6a' : 'var(--rule)';
       return `<span style="font-family:'Chivo Mono',monospace;font-size:9px;font-weight:700;color:${color};background:${bg};border:1px solid ${border};padding:2px 7px;border-radius:1px;margin-left:4px;letter-spacing:.5px;">${arrow}${mph}mph ${label}</span>`;
     }
 
@@ -1925,6 +1913,22 @@
     let currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0);
     let dataMode = 'loading'; // 'live' | 'cached' | 'error'
+
+    // ─── TARGETS — personal player watchlist ─────────────────────────────────
+    let targetSet = new Set(JSON.parse(localStorage.getItem('diamond_targets') || '[]'));
+    function saveTargets() { localStorage.setItem('diamond_targets', JSON.stringify([...targetSet])); }
+    function toggleTarget(name) {
+      targetSet.has(name) ? targetSet.delete(name) : targetSet.add(name);
+      saveTargets();
+      updateTargetsBadge();
+      render();
+    }
+    function updateTargetsBadge() {
+      const ct = document.getElementById('targetsCt');
+      if (!ct) return;
+      if (targetSet.size > 0) { ct.textContent = targetSet.size; ct.style.display = ''; }
+      else ct.style.display = 'none';
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // MLB STATS API — live fetch
@@ -2140,6 +2144,7 @@
             ppType:      sp.ppType      || '',
             sprintSpeed: sp.sprintSpeed || null,
             gameTotal:   sp.gameTotal   || 0,
+            h2h:         sp.h2h         || null,
             score: sc,
             tier: t,
             ml: mlabel(sc),
@@ -2284,7 +2289,7 @@
           <div class="top5-team">${p.team} · ${p.pos}</div>
           <div class="top5-score ${p.tier}">${p.score}</div>
           <div class="top5-lbl">COMPOSITE</div>
-          <div class="top5-meta">${pills.join('')}<span class="top5-pill">${p.HR} HR · .${String(Math.round(p.OPS * 1000)).slice(1)} OPS</span></div>
+          <div class="top5-meta">${pills.join('')}<span class="top5-pill">${p.HR} HR · ${p.OPS ? p.OPS.toFixed(3) : '—'} OPS</span></div>
           <div class="top5-vs">vs ${p.pitcher} · ${p.pitcherEra} ERA</div>
         </div>`;
       }).join('')}
@@ -2315,14 +2320,24 @@
       const sc = p.tier==='S'?'var(--green)':p.tier==='A'?'var(--gold)':p.tier==='B'?'#e3b341':'var(--a2)';
       const photoUrl = p.mlbId ? `https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg` : '';
       const badge = p.hotStreak ? '🔥' : p.confirmed && p.lineupPos > 0 ? `#${p.lineupPos}` : '';
+      const isTargeted = targetSet.has(p.name);
+      const statLine = [
+        p.hrPct > 0 && `HR ${p.hrPct.toFixed(1)}%`,
+        p.barrel > 0 && `${p.barrel.toFixed(1)}% BBL`,
+        p.HR > 0 && `${p.HR} HR`,
+      ].filter(Boolean).slice(0, 2).join(' · ');
       return `<div class="mini-pick">
         <div class="mini-photo" style="border-color:${tc}">⚾
           ${photoUrl?`<img src="${photoUrl}" alt="" onerror="this.style.display='none'">`:''}</div>
         <div class="mini-info">
-          <div class="mini-name">${p.name.split(' ').pop()}</div>
-          <div class="mini-sub">${p.team} · ${p.pos} ${badge}</div>
+          <div class="mini-name" style="display:flex;align-items:center;gap:4px;">${p.name.split(' ').pop()}${isTargeted?'<span title="In Targets" style="font-size:9px;">🎯</span>':''}</div>
+          <div class="mini-sub">${p.team} · ${p.pos}${badge?' · '+badge:''}</div>
+          ${statLine?`<div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);margin-top:1px;">${statLine}</div>`:''}
         </div>
-        <div class="mini-score" style="color:${sc}">${p.score}</div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div class="mini-score" style="color:${sc}">${p.score}</div>
+          <div style="font-family:'Chivo Mono',monospace;font-size:7px;color:var(--muted);">${p.tier} TIER</div>
+        </div>
       </div>`;
     }
 
@@ -2395,17 +2410,22 @@
     // ── Main render ────────────────────────────────────────────────────────────
     function render() {
       renderInjuryStrip();
+
+      const isSearch  = activeTab === 'search';
+      const isTargets = activeTab === 'targets';
+      const isSystem  = activeTab === 'system';
+      const isSpecial = isSearch || isTargets || isSystem;
+
+      document.getElementById('searchPanel').style.display  = isSearch  ? '' : 'none';
+      document.getElementById('targetsPanel').style.display = isTargets ? '' : 'none';
+      document.getElementById('systemPanel').style.display  = isSystem  ? '' : 'none';
+      document.getElementById('top5wrap').style.display     = isSpecial ? 'none' : '';
+
+      if (isSearch)  { document.getElementById('board').innerHTML = ''; return; }
+      if (isTargets) { renderTargetsPanel(); document.getElementById('board').innerHTML = ''; return; }
+      if (isSystem)  { renderSystemPanel();  document.getElementById('board').innerHTML = ''; return; }
+
       renderTop5();
-
-      // Toggle search panel
-      const isSearch = activeTab === 'search';
-      document.getElementById('searchPanel').style.display = isSearch ? '' : 'none';
-      document.getElementById('top5wrap').style.display = isSearch ? 'none' : '';
-
-      if (isSearch) {
-        document.getElementById('board').innerHTML = '';
-        return;
-      }
 
       if (!activeGames.length) {
         document.getElementById('board').innerHTML = '<div class="empty-msg">NO GAMES FOUND FOR THIS DATE</div>';
@@ -2416,6 +2436,130 @@
       for (const g of activeGames) html += renderGameCard(g);
       html += '</div>';
       document.getElementById('board').innerHTML = html || '<div class="empty-msg">NO GAMES MATCH THIS COLLECTION</div>';
+    }
+
+    // ── TARGETS panel ─────────────────────────────────────────────────────────
+    function renderTargetsPanel() {
+      const el = document.getElementById('targetsPanel');
+      if (!targetSet.size) {
+        el.innerHTML = `<div style="padding:50px 0;text-align:center;font-family:'Chivo Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:2px;">
+          🎯 NO TARGETS YET<br><br>
+          <span style="font-size:9px;line-height:2.2;display:block;max-width:300px;margin:0 auto;">
+            Click the <strong style="color:var(--gold)">★</strong> star on any player row to add them to your personal watchlist. Targets persist across sessions.
+          </span></div>`;
+        return;
+      }
+      // Gather all targeted players from today's games
+      const today = [];
+      const seenNames = new Set();
+      for (const g of activeGames) {
+        for (const p of buildGamePlayers(g)) {
+          if (targetSet.has(p.name) && !seenNames.has(p.name)) {
+            today.push(p); seenNames.add(p.name);
+          }
+        }
+      }
+      today.sort((a, b) => b.score - a.score);
+      const notInGames = [...targetSet].filter(n => !seenNames.has(n));
+      el.innerHTML = `
+        <div style="padding:14px 0;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+            <span style="font-family:'Chivo Mono',monospace;font-size:11px;font-weight:700;letter-spacing:3px;">🎯 TARGETS — MY WATCHLIST</span>
+            <span style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--muted);">${targetSet.size} PLAYER${targetSet.size!==1?'S':''}</span>
+            <button onclick="targetSet.clear();saveTargets();updateTargetsBadge();renderTargetsPanel();" style="margin-left:auto;background:transparent;border:1px solid var(--rule);color:var(--muted);font-family:'Chivo Mono',monospace;font-size:8px;padding:4px 12px;cursor:pointer;border-radius:2px;letter-spacing:1px;">CLEAR ALL</button>
+          </div>
+          ${today.length ? `
+          <table class="pt" style="margin-bottom:10px;">
+            <thead><tr>
+              <th style="width:62px"></th>
+              <th>PLAYER</th>
+              <th>MATCHUP</th>
+              <th class="r">HR</th>
+              <th class="r">BARREL</th>
+              <th class="r">SCORE</th>
+            </tr></thead>
+            <tbody>${today.map(p => row(p)).join('')}</tbody>
+          </table>` : `<div style="font-family:'Chivo Mono',monospace;font-size:9px;color:var(--muted);padding:12px 0 8px;">Your targets aren't in today's lineup yet — check back after lineups post.</div>`}
+          ${notInGames.length ? `
+          <div style="font-family:'Chivo Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;margin-top:4px;">NOT PLAYING TODAY</div>
+          ${notInGames.map(n => `
+            <div style="padding:8px 12px;background:var(--cream);border:1px solid var(--rule);margin-bottom:3px;border-radius:2px;display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-weight:700;font-size:13px;">${n}</span>
+              <button onclick="toggleTarget('${n.replace(/'/g,"\\'").replace(/"/g,'\\"')}');event.stopPropagation()" title="Remove target" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;transition:color .1s;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+            </div>`).join('')}` : ''}
+        </div>`;
+    }
+
+    // ── SYSTEM panel ─────────────────────────────────────────────────────────
+    function renderSystemPanel() {
+      const el = document.getElementById('systemPanel');
+      const weights = [
+        { label: 'Power Base (HR/G rate)',      pts: 28, color: 'var(--accent)' },
+        { label: 'OPS + SLG',                   pts: 22, color: 'var(--gold)' },
+        { label: 'Pitcher Vulnerability',        pts: 18, color: '#f0654a' },
+        { label: 'Park + Wind + Weather',        pts: 15, color: 'var(--teal)' },
+        { label: 'Barrel% + Hard Hit%',          pts: 13, color: 'var(--green)' },
+        { label: 'Platoon Advantage (L/R)',      pts:  8, color: 'var(--a2)' },
+        { label: 'Line Movement',                pts:  3, color: 'var(--purple)' },
+      ];
+      const factors = [
+        { n: '1 · Handedness + Pitch Mix',   c: 'c1', pts: 'Platoon ±8pts',     desc: 'Platoon splits (L/R): OPS & ISO vs pitcher hand. FB% pitchers vs barrel% batters. Chase rate — low chasers see more FBs in zone. Batter performance vs primary pitch type.' },
+        { n: '2 · Park + Altitude + Humidor',c: 'c2', pts: 'Park factor ±8pts', desc: 'Statcast HR park factor (100=avg). Coors Field: 150 PF + altitude drag reduction. Humidor status. Stadium dimensions and wall height. Microclimate wind tunnels.' },
+        { n: '3 · Full Weather Stack',        c: 'c2', pts: 'Weather ±7pts',     desc: 'Wind speed + direction vector vs park orientation. Barometric pressure — low = less air resistance. Humidity — dry air reduces drag. Temp bonus +2.5ft/10°F above 70°F. Roof status.' },
+        { n: '4 · Batter Analytics',          c: 'c3', pts: 'Power base 28pts',  desc: 'HR/game (21-day rolling, 60% weight vs 40% season). Barrel% (EV + 8–32° launch). Hard Hit Rate ≥95mph. xSLG, xwOBA, ISO. Sweet spot %. Chase rate. Whiff rate. Pull rate.' },
+        { n: '5 · Pitcher Vulnerabilities',   c: 'c4', pts: 'Pitcher 18pts',     desc: 'ERA + HR/9 vs league avg. Hard contact allowed. Fly ball % (high = HR risk). FB velocity sub-91mph flag. Fatigue: ≤3 days rest OR ≥100 pitches last outing.' },
+        { n: '6 · Rolling Averages',          c: 'c5', pts: 'Form 60% weight',   desc: '15–30 day rolling windows. Pitchers: last 10 starts. Hitters: last 20 games. Season stats 40%, recent form 60%. Platoon splits min 50 PA sample.' },
+        { n: '7 · ML Model',                  c: 'c5', pts: 'AUC 0.83–0.87',    desc: 'Binary: HR=1, no HR=0. Logistic regression baseline AUC ~0.74. XGBoost/LightGBM on Statcast tabular data. Features: barrel%, xSLG, pitcher xBA, park factor, wind, handedness.' },
+        { n: '8 · Line Movement',             c: 'c6', pts: '+3pts signal',      desc: 'Opening vs current HR prop line shift. Sharp signal: line moving toward yes = market confidence. Public vs sharp split via bet% vs handle%.' },
+        { n: '9 · Umpire Tendencies',         c: 'c6', pts: 'Ump ±2pts',         desc: 'HP ump strike zone expansion/contraction. Liberal zones → pitcher goes off-speed early. Tight zones → more FBs in zone for batter.' },
+        { n: '10 · Travel + Fatigue',         c: 'c1', pts: 'Travel ±2pts',      desc: 'Cross-timezone travel: East→West vs West→East jet lag. Consecutive games played. Days since last off day. Road team 3-city trip Day 6+.' },
+        { n: '11 · Spray Angle + Pull',       c: 'c3', pts: 'Pull rate factor',  desc: 'Pull% to short porch or favorable wall distance. Hard-hit pull% amplified at CBP, Yankee Stadium. Spray angle vs stadium dimensions. OAA.' },
+        { n: '12 · Score Calibration',        c: 'c4', pts: '0–99 composite',    desc: 'Power Base 28pts + OPS/SLG 22pts + Pitcher Vuln 18pts + Park/Wind/Weather 15pts + Barrel+HH 13pts + Platoon 8pts + Line Move 3pts. S≥80, A≥65, B≥50, C≥35.' },
+      ];
+      const cMap = { c1:'var(--accent)', c2:'var(--gold)', c3:'var(--green)', c4:'var(--a2)', c5:'var(--purple)', c6:'var(--teal)' };
+      el.innerHTML = `
+        <div style="padding:16px 0;">
+          <div style="font-family:'Chivo Mono',monospace;font-size:11px;font-weight:700;letter-spacing:3px;margin-bottom:16px;">⚙ SYSTEM — 12-FACTOR COMPOSITE MODEL</div>
+
+          <!-- Score breakdown / weight bars -->
+          <div style="background:var(--cream);border:1px solid var(--rule);border-radius:4px;padding:16px;margin-bottom:16px;">
+            <div style="font-family:'Chivo Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:12px;">Score Weight Breakdown (total: 99 pts)</div>
+            ${weights.map(w => `
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <div style="font-family:'Chivo Mono',monospace;font-size:9px;width:185px;flex-shrink:0;color:var(--ink);">${w.label}</div>
+                <div style="flex:1;background:#010409;border-radius:2px;height:12px;overflow:hidden;">
+                  <div style="width:${Math.round((w.pts/99)*100)}%;background:${w.color};height:100%;border-radius:2px;opacity:.85;"></div>
+                </div>
+                <div style="font-family:'Chivo Mono',monospace;font-size:10px;font-weight:700;color:${w.color};width:38px;text-align:right;">${w.pts}pts</div>
+              </div>`).join('')}
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#0d2d1a;color:var(--green);border:1px solid #1a5a34;padding:3px 10px;border-radius:2px;font-weight:700;">S ≥ 80</span>
+              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#2d2200;color:var(--gold);border:1px solid #5a4400;padding:3px 10px;border-radius:2px;font-weight:700;">A ≥ 65</span>
+              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#2d1f00;color:#e3b341;border:1px solid #5a3d00;padding:3px 10px;border-radius:2px;font-weight:700;">B ≥ 50</span>
+              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a;padding:3px 10px;border-radius:2px;font-weight:700;">C ≥ 35</span>
+              <span style="font-family:'Chivo Mono',monospace;font-size:8px;background:var(--cream);color:var(--muted);border:1px solid var(--rule);padding:3px 10px;border-radius:2px;font-weight:700;">D &lt; 35</span>
+            </div>
+          </div>
+
+          <!-- 12 factors -->
+          <div class="fgrid" style="margin-bottom:16px;">
+            ${factors.map(f => `
+              <div class="fc ${f.c}" style="border-left-color:${cMap[f.c]}">
+                <h4>${f.n}</h4>
+                <p><strong style="color:${cMap[f.c]}">${f.pts}</strong><br>${f.desc}</p>
+              </div>`).join('')}
+          </div>
+
+          <!-- Data sources -->
+          <div style="background:var(--cream);border:1px solid var(--rule);border-radius:4px;padding:14px;">
+            <div style="font-family:'Chivo Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:10px;">LIVE DATA SOURCES</div>
+            <div class="arow"><span class="aname">MLB Stats API</span><span class="adesc">statsapi.mlb.com — no key needed. Today's games, probable pitchers, game times, venues, lineups.</span><span class="afree">FREE · LIVE</span></div>
+            <div class="arow"><span class="aname">Baseball Savant</span><span class="adesc">Statcast barrel%, exit velo, launch angle, xSLG, pitch-level data via pybaseball.</span><span class="afree">FREE</span></div>
+            <div class="arow"><span class="aname">Open-Meteo Weather</span><span class="adesc">Stadium lat/lng → hourly wind speed/direction, temp, humidity, barometric pressure at game time.</span><span class="afree">FREE · LIVE</span></div>
+            <div class="arow"><span class="aname">Ump Scorecards</span><span class="adesc">umpscorecards.com — per-game ump zone maps, run impact, favor scores.</span><span class="afree">FREE</span></div>
+            <div class="arow"><span class="aname">FanGraphs Leaders</span><span class="adesc">Barrel%, hard hit%, fly ball%, chase rate, whiff rate, ISO, wRC+. Rolling splits.</span><span class="afree">FREE</span></div>
+          </div>
+        </div>`;
     }
 
     function toggleGameCard(id) {
@@ -2449,6 +2593,8 @@
       else if (!p.confirmed)                 flags.push(`<span class="flag" style="background:#2d2200;color:var(--gold);border:1px solid #5a4400">LINEUP?</span>`);
       if (p.platoon >= 8)                    flags.push(`<span class="flag" style="background:#0d1f3a;color:var(--a2);border:1px solid #1a3a6a">L/R ✓</span>`);
       if (lineMoved.has(p.name))             flags.push(`<span class="flag flag-lm">📈 LINE</span>`);
+      const isTargeted = targetSet.has(p.name);
+      const targetBtn = `<button title="${isTargeted?'Remove from Targets':'Add to Targets'}" onclick="event.stopPropagation();toggleTarget('${p.name.replace(/'/g,"\\'").replace(/"/g,'\\"')}')" style="background:transparent;border:1px solid ${isTargeted?'var(--gold)':'var(--rule)'};color:${isTargeted?'var(--gold)':'#484f58'};font-size:11px;padding:1px 5px;cursor:pointer;border-radius:2px;transition:all .1s;margin-top:2px;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='${isTargeted?'var(--gold)':'var(--rule)'}';this.style.color='${isTargeted?'var(--gold)':'#484f58'}'">${isTargeted?'★':'☆'}</button>`;
 
       // Key intel under matchup — max 3 things
       const intel = [];
@@ -2457,12 +2603,17 @@
       if (p.pitcherFatigued)                 intel.push(`<span class="sc neg">P fatigued</span>`);
       else if (p.pitcherBarrelAllowed >= 12) intel.push(`<span class="sc pos">P allows barrels</span>`);
       if (p.oppBullpenEra >= 5.0)            intel.push(`<span class="sc pos">Weak bullpen</span>`);
+      if (p.h2h && p.h2h.ab >= 3) {
+        const h2hCls = p.h2h.hr >= 1 ? 'pos' : p.h2h.ops <= 0.450 ? 'neg' : '';
+        const h2hHr  = p.h2h.hr ? ` ${p.h2h.hr}HR` : '';
+        intel.push(`<span class="sc ${h2hCls}" title="Career vs this pitcher">${p.h2h.h}/${p.h2h.ab}${h2hHr} H2H</span>`);
+      }
 
       const legData = {name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0};
       return `<tr class="pr${sel?' pk':''}" data-leg='${JSON.stringify(legData)}' onclick="handleRowClick(this)">
     <td style="padding:5px 4px 5px 6px">${photo}</td>
     <td>
-      <div class="pname">${p.name}</div>
+      <div class="pname" style="display:flex;align-items:center;gap:6px;">${p.name} ${targetBtn}</div>
       <div class="psub">
         <span style="font-weight:700;color:${tierColor}">${p.team}</span> · ${p.pos}
       </div>
@@ -2637,6 +2788,7 @@
 
     // ── INIT ──────────────────────────────────────────────────────────────────
     renderSlip();
+    updateTargetsBadge();
     loadDay(currentDate); // auto-loads today every time file opens
   </script>
 </body>
