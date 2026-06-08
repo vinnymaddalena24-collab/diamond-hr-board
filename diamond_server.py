@@ -1003,42 +1003,44 @@ def fetch_pitcher_arsenal():
 
 
 def fetch_batter_spray(batter_id):
-    """Last 20 batted-ball events with Statcast hc_x/hc_y coordinates."""
+    """Last 25 in-play batted-ball events with Statcast hc_x/hc_y coordinates."""
     if not batter_id: return []
     cached = cache_get(f"spray_{batter_id}", ttl=SPLITS_TTL)
     if cached: return cached
+    import csv as _csv, io as _io
     url = (
         "https://baseballsavant.mlb.com/statcast_search/csv"
         "?all=true&hfSea=2026%7C&player_type=batter"
         f"&batters_lookup%5B%5D={batter_id}"
         "&type=details&sort_col=game_date&sort_order=desc"
         "&min_pitches=0&min_results=0&min_pas=0"
-        "&hfGT=R%7C&hfFlag=is%7C"   # regular season, in-play only
+        "&hfGT=R%7C"  # regular season only (no flag filter — we filter below)
     )
     try:
         raw = fetch_savant(url, timeout=25)
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2: return []
-        hdrs = [h.strip('"').strip() for h in lines[0].split(",")]
+        # Strip BOM and parse with csv.DictReader so embedded commas are handled
+        raw = raw.lstrip("﻿")
+        reader = _csv.DictReader(_io.StringIO(raw))
         results = []
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(hdrs): continue
-            row = dict(zip(hdrs, [c.strip('"').strip() for c in cols]))
+        IN_PLAY = {"home_run","single","double","triple","field_out",
+                   "grounded_into_double_play","double_play","force_out",
+                   "sac_fly","sac_bunt","field_error","fielders_choice","caught_stealing_2b"}
+        for row in reader:
+            event = row.get("events","").strip()
+            if not event: continue
             hc_x = _safe_float(row.get("hc_x"))
             hc_y = _safe_float(row.get("hc_y"))
-            if not hc_x or not hc_y: continue
-            event = row.get("events", "").strip()
-            if not event: continue
+            # Skip rows without valid hit coordinates
+            if hc_x < 1 or hc_y < 1: continue
             results.append({
                 "x":      round(hc_x, 1),
                 "y":      round(hc_y, 1),
                 "event":  event,
-                "desc":   (row.get("des") or row.get("description",""))[:90].strip(),
-                "pitcher": row.get("player_name","").strip(),  # player_name = pitcher in batter search
+                "desc":   (row.get("des") or "")[:90].strip(),
+                "pitcher": row.get("player_name","").strip(),
                 "date":   row.get("game_date","").strip(),
                 "ev":     _safe_float(row.get("launch_speed")),
-                "la":     _safe_float(row.get("launch_angle")),
+                "la":     round(_safe_float(row.get("launch_angle")), 1),
                 "bb":     row.get("bb_type","").strip(),
             })
             if len(results) >= 25: break

@@ -1074,7 +1074,7 @@ function playerRow(p, g) {
   const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
 
   const sprayRowHtml = expandedPlayer === p.name ? buildSprayRow(p) : '';
-  return `${sprayRowHtml}<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
+  return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
   <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add/remove from parlay slip" style="cursor:pointer">
     <div class="p-photo-wrap">
       <div class="p-photo" style="transition:border-color .12s;border-color:${sel?'var(--amber)':'var(--border)'}">⚾${photo}</div>
