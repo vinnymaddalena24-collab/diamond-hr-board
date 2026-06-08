@@ -661,7 +661,7 @@ def fetch_recent_batting_stats(days=15):
         return {}
 
 def fetch_pitcher_game_log(pitcher_id):
-    """Last 5 starts: rolling 3-start ERA, days rest, fatigue flag"""
+    """Last 5 starts: real per-start lines, rolling ERA, days rest, fatigue flag."""
     if not pitcher_id: return {}
     cached = cache_get(f"plog_{pitcher_id}")
     if cached: return cached
@@ -671,10 +671,52 @@ def fetch_pitcher_game_log(pitcher_id):
         data   = fetch(url)
         splits = data.get("stats", [{}])[0].get("splits", [])
         if not splits: return {}
-        recent = splits[:3]
-        total_er = sum(float(s["stat"].get("earnedRuns", 0) or 0) for s in recent)
-        total_ip = sum(float(s["stat"].get("inningsPitched", 0) or 0) for s in recent)
+
+        # Build real per-start lines (most recent first)
+        starts = []
+        for s in splits[:5]:
+            stat = s.get("stat", {})
+            ip_raw = float(stat.get("inningsPitched", 0) or 0)
+            er     = int(stat.get("earnedRuns", 0) or 0)
+            hr_all = int(stat.get("homeRuns", 0) or 0)
+            hits   = int(stat.get("hits", 0) or 0)
+            bb     = int(stat.get("baseOnBalls", 0) or 0)
+            k      = int(stat.get("strikeOuts", 0) or 0)
+            pc     = int(stat.get("numberOfPitches", 0) or 0)
+            date   = s.get("date", "")
+            opp_obj = s.get("opponent", {})
+            opp = (opp_obj.get("abbreviation")
+                   or TEAM_ID_TO_ABBR.get(opp_obj.get("id"), "")
+                   or opp_obj.get("name", "???")[:3].upper())
+            # Per-start ERA
+            start_era = round((er / ip_raw) * 9, 2) if ip_raw > 0 else 99.0
+            # Quality: green=good, amber=ok, red=bad
+            if ip_raw >= 6.0 and er <= 2:
+                quality = "good"
+            elif ip_raw < 4.0 or er >= 5:
+                quality = "bad"
+            else:
+                quality = "ok"
+            starts.append({
+                "date":    date,
+                "opp":     opp,
+                "ip":      ip_raw,
+                "er":      er,
+                "hr":      hr_all,
+                "h":       hits,
+                "bb":      bb,
+                "k":       k,
+                "pc":      pc,
+                "era":     start_era,
+                "quality": quality,
+            })
+
+        # Rolling 3-start ERA for scoring
+        recent3 = splits[:3]
+        total_er = sum(float(s["stat"].get("earnedRuns", 0) or 0) for s in recent3)
+        total_ip = sum(float(s["stat"].get("inningsPitched", 0) or 0) for s in recent3)
         recent_era = round((total_er / total_ip) * 9, 2) if total_ip > 0 else 4.50
+
         last_date_str = splits[0].get("date", "")
         days_rest = 5
         if last_date_str:
@@ -683,11 +725,13 @@ def fetch_pitcher_game_log(pitcher_id):
                 days_rest = (datetime.now() - last_date).days
             except: pass
         last_pitches = int(splits[0]["stat"].get("numberOfPitches", 90) or 90)
+
         result = {
-            "recent_era":  recent_era,
-            "days_rest":   days_rest,
-            "last_pitches":last_pitches,
-            "fatigued":    days_rest <= 3 or last_pitches >= 105,
+            "recent_era":   recent_era,
+            "days_rest":    days_rest,
+            "last_pitches": last_pitches,
+            "fatigued":     days_rest <= 3 or last_pitches >= 105,
+            "starts":       starts,   # real per-start lines
         }
         cache_set(f"plog_{pitcher_id}", result)
         return result
@@ -1516,6 +1560,7 @@ def build_daily_data(date_str):
             g[side].update(stats)
             g[side]["_log"]  = plog
             g[side]["_psav"] = psav
+            g[side]["starts"] = plog.get("starts", [])   # real per-start lines
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
             # Apply correct throwing hand from MLB people API
@@ -1624,6 +1669,7 @@ def build_daily_data(date_str):
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),
                 "pitcherHand":      opp_pitcher.get("hand", "R"),
                 "pitcherFatigued":  pitcher_log.get("fatigued", False),
+                "pitcherStarts":    pitcher_log.get("starts", []),   # last 5 real start lines
                 "pitcherBarrelAllowed": round(pitcher_sav.get("barrel_allowed", 0), 1),
                 "lineupPos":        lineup_pos,
                 "confirmed":        lineup_pos > 0,

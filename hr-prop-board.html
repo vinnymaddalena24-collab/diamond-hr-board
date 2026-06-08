@@ -451,22 +451,26 @@ function scoreColor(t) { return {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(-
 function platAdj(bats, ph) { if(bats==='S') return 4; return bats!==ph?8:-4; }
 function eraClass(era) { return era<2.80?'elite':era>4.80?'danger':'mid'; }
 
-function formDots(recentEra, era, fatigued) {
-  // Generate 5 form dots based on recent vs season ERA
-  const dots = [];
-  for(let i=0;i<5;i++){
-    let c;
-    if(fatigued && i===0) c='#EF4444';
-    else if(recentEra < era * 0.85) c='#10B981';
-    else if(recentEra < era * 1.05) c='#F59E0B';
-    else c='#EF4444';
-    // Add some variation
-    const offset = (i - 2) * 0.15;
-    const v = recentEra + offset;
-    c = v < 3.50 ? '#10B981' : v < 4.50 ? '#F59E0B' : '#EF4444';
-    dots.push(`<span class="pf-dot" style="background:${c}"></span>`);
+function formDots(recentEra, era, fatigued, starts) {
+  // Use real per-start lines when available; fall back to ERA estimate
+  if (starts && starts.length) {
+    return starts.slice(0, 5).map(s => {
+      let c, tip;
+      if (s.quality === 'good') c = '#10B981';
+      else if (s.quality === 'bad') c = '#EF4444';
+      else c = '#F59E0B';
+      const ipFmt = Number.isInteger(s.ip) ? `${s.ip}.0` : s.ip;
+      const hrTxt = s.hr > 0 ? ` · ${s.hr}HR allowed` : '';
+      tip = `${s.date || ''} vs ${s.opp} — ${ipFmt}IP ${s.er}ER${hrTxt} (${s.pc}p)`;
+      return `<span class="pf-dot" style="background:${c};cursor:help" title="${tip}"></span>`;
+    }).join('');
   }
-  return dots.join('');
+  // Fallback: estimate from rolling ERA
+  return [0,1,2,3,4].map(i => {
+    const v = recentEra + (i - 2) * 0.2;
+    const c = v < 3.50 ? '#10B981' : v < 4.80 ? '#F59E0B' : '#EF4444';
+    return `<span class="pf-dot" style="background:${c}"></span>`;
+  }).join('');
 }
 
 function computeEdges(p, g) {
@@ -553,11 +557,13 @@ async function loadDay(dateObj) {
       ap:{ n:g.awayPitcher.name, h:g.awayPitcher.hand||'R', era:g.awayPitcher.era||4.50,
            fb:g.awayPitcher.fbPct||38, vel:g.awayPitcher.vel||92.5, q:g.awayPitcher.quality||'mid',
            recentEra: g.awayPitcher.pitcherRecentEra||g.awayPitcher.era||4.50,
-           fatigued: g.awayPitcher.pitcherFatigued||false },
+           fatigued: g.awayPitcher.pitcherFatigued||false,
+           starts: g.awayPitcher.starts||[] },
       hp:{ n:g.homePitcher.name, h:g.homePitcher.hand||'R', era:g.homePitcher.era||4.50,
            fb:g.homePitcher.fbPct||38, vel:g.homePitcher.vel||92.5, q:g.homePitcher.quality||'mid',
            recentEra: g.homePitcher.pitcherRecentEra||g.homePitcher.era||4.50,
-           fatigued: g.homePitcher.pitcherFatigued||false },
+           fatigued: g.homePitcher.pitcherFatigued||false,
+           starts: g.homePitcher.starts||[] },
       serverPlayers: g.players||[],
     }));
     activeWX = {};
@@ -721,7 +727,7 @@ function pitcherPill(pitcher, teamAbbr) {
     <span class="pp-nm">${pitcher.n}</span>
     <span class="pp-era ${ec}">${pitcher.era.toFixed(2)}</span>
     <span class="pp-hand">${pitcher.h}HP</span>
-    <span class="pp-dots">${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued)}</span>
+    <span class="pp-dots">${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued, pitcher.starts)}</span>
   </div>`;
 }
 
@@ -797,9 +803,24 @@ function pitcherDetailCard(pitcher, teamAbbr) {
     </div>
     <div class="pdc-form">
       <span class="pdc-form-lbl">L5:</span>
-      ${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued)}
+      ${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued, pitcher.starts)}
       ${pitcher.fatigued?'<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--red);margin-left:5px">⚡ FATIGUED</span>':''}
     </div>
+    ${pitcher.starts && pitcher.starts.length ? `
+    <div style="margin-top:7px;border-top:1px solid var(--border);padding-top:6px">
+      ${pitcher.starts.slice(0,5).map(s => {
+        const c = s.quality==='good'?'var(--green)':s.quality==='bad'?'var(--red)':'var(--amber)';
+        const ipFmt = s.ip % 1 === 0 ? `${s.ip}.0` : s.ip;
+        const hrBadge = s.hr > 0 ? `<span style="color:var(--red);font-weight:700"> ${s.hr}HR</span>` : '';
+        return `<div style="display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 0;border-bottom:1px solid var(--dim)">
+          <span style="color:var(--muted);width:52px;flex-shrink:0">${s.date||''}</span>
+          <span style="color:var(--sub);width:26px;flex-shrink:0">@${s.opp}</span>
+          <span style="color:${c};font-weight:700;width:36px;flex-shrink:0">${ipFmt}IP</span>
+          <span style="color:${c};font-weight:700">${s.er}ER${hrBadge}</span>
+          <span style="color:var(--muted);margin-left:auto">${s.k}K ${s.bb}BB ${s.pc}p</span>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
   </div>`;
 }
 
