@@ -59,6 +59,8 @@ MLB_TEAM_IDS = {
     "PHI": 143, "PIT": 134, "SD":  135, "SEA": 136, "SF":  137,
     "STL": 138, "TBR": 139, "TEX": 140, "TOR": 141, "WSH": 120,
 }
+# Reverse map: team numeric ID → our abbreviation (used when API omits abbreviation)
+TEAM_ID_TO_ABBR = {v: k for k, v in MLB_TEAM_IDS.items()}
 
 # Stadium coordinates for weather (home team → lat/lng)
 # Stadium coordinates for weather (home team → lat/lng)
@@ -507,11 +509,13 @@ def fetch_active_rosters():
         for p in data.get("people", []):
             pid       = p.get("id")
             name      = p.get("fullName", "")
-            team_abbr = p.get("currentTeam", {}).get("abbreviation", "")
+            ct        = p.get("currentTeam", {})
+            # API sometimes omits abbreviation — fall back to our ID→abbr map
+            team_abbr = ct.get("abbreviation") or TEAM_ID_TO_ABBR.get(ct.get("id"), "")
             team      = TEAM_MAP.get(team_abbr, team_abbr)
             pos       = p.get("primaryPosition", {}).get("abbreviation", "")
             bats      = p.get("batSide", {}).get("code", "R")
-            if name:
+            if name and team:
                 players[name] = {"id": pid, "team": team, "pos": pos,
                                  "bats": bats, "name": name}
         print(f"[rosters-primary] {len(players)} players")
