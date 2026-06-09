@@ -207,7 +207,8 @@ table.pt th.c{text-align:center}
 
 /* Score cell */
 .td-score{text-align:right;padding-right:12px!important;min-width:72px}
-.score-num{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;line-height:1}
+.score-wrap{position:relative;display:inline-block}
+.score-num{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;line-height:1;cursor:help}
 .score-S{color:var(--s)} .score-A{color:var(--a)} .score-B{color:var(--b)} .score-C{color:var(--c)} .score-D{color:var(--d)}
 .tier-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:4px;display:inline-block;margin-top:2px}
 .tS{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--s)}
@@ -217,6 +218,15 @@ table.pt th.c{text-align:center}
 .tD{background:var(--card2);border:1px solid var(--border);color:var(--muted)}
 .prob-bar{height:3px;background:var(--dim);border-radius:2px;margin-top:3px;width:52px;overflow:hidden;margin-left:auto}
 .prob-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--green))}
+/* Score breakdown tooltip */
+.score-tip{display:none;position:absolute;right:0;bottom:calc(100% + 8px);background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;min-width:190px;z-index:600;box-shadow:0 8px 24px rgba(0,0,0,.55);pointer-events:none}
+.score-wrap:hover .score-tip{display:block}
+.stip-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
+.stip-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 0;font-family:'JetBrains Mono',monospace;font-size:9px}
+.stip-lbl{color:var(--sub);white-space:nowrap}
+.stip-pos{color:var(--green);font-weight:700} .stip-neg{color:var(--red);font-weight:700} .stip-neu{color:var(--muted)}
+/* HR prob column */
+.td-prob{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--sub);white-space:nowrap;min-width:52px}
 
 /* Action cell */
 .td-act{padding-right:12px!important;white-space:nowrap}
@@ -334,7 +344,7 @@ table.pt th.c{text-align:center}
   .picks-strip{padding:10px 12px}
   .filter-bar{padding:6px 12px}
   .hdr{padding:0 12px;gap:8px}
-  table.pt th:nth-child(n+5),.pr td:nth-child(n+5){display:none}
+  table.pt th:nth-child(n+6),.pr td:nth-child(n+6){display:none}
 }
 </style>
 </head>
@@ -377,6 +387,7 @@ table.pt th.c{text-align:center}
   <button class="ftab" data-tab="platoon">⚡ PLATOON</button>
   <button class="ftab" data-tab="confirmed">✓ CONFIRMED</button>
   <button class="ftab" data-tab="targets" id="targetsTabBtn">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:var(--amber);font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
+  <button class="ftab" data-tab="soon">⏰ NEXT 3H</button>
   <div class="fb-div"></div>
   <button class="ftab" data-tab="search">🔍 LOOKUP</button>
   <input class="fb-search" id="quickSearch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
@@ -471,6 +482,20 @@ function tierOf(s) { return s>=80?'S':s>=65?'A':s>=50?'B':s>=35?'C':'D'; }
 function scoreColor(t) { return {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--d)'}[t]||'var(--d)'; }
 function platAdj(bats, ph) { if(bats==='S') return 4; return bats!==ph?8:-4; }
 function eraClass(era) { return era<2.80?'elite':era>4.80?'danger':'mid'; }
+
+function gameStartsWithin3Hours(g) {
+  const match = (g.time||'').match(/(\d+):(\d+)\s+(AM|PM)/i);
+  if (!match) return true;
+  let h = parseInt(match[1]), m = parseInt(match[2]);
+  const ap = match[3].toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  // Convert to ET (UTC-4 summer)
+  const nowET = new Date(Date.now() - 4 * 3600000);
+  const gameET = new Date(nowET); gameET.setHours(h, m, 0, 0);
+  const diffH = (gameET - nowET) / 3600000;
+  return diffH >= -0.5 && diffH <= 3; // started up to 30min ago or starts within 3h
+}
 
 function formDots(recentEra, era, fatigued, starts) {
   // Use real per-start lines when available; fall back to ERA estimate
@@ -652,7 +677,7 @@ function buildSprayRow(player) {
   const inner = events === undefined || events === null
     ? `<div class="spray-wrap"><div style="padding:24px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:10px"><span class="spinner"></span>LOADING STATCAST DATA...</div></div>`
     : buildSprayInner(player, events);
-  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="8">${inner}</td></tr>`;
+  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="9">${inner}</td></tr>`;
 }
 
 function fieldSVG(events) {
@@ -849,6 +874,7 @@ function buildPlayers(g) {
       h2h: sp.h2h||null,
       pitchMatchup: sp.pitchMatchup || [],
       sprayAdj:     sp.sprayAdj     || 0,
+      scoreBreakdown: sp.scoreBreakdown || null,
       platoon: platAdj(sp.bats||'R', pitcher.h),
       score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),
       gameId: g.id,
@@ -959,6 +985,9 @@ function miniPickHtml(p, g) {
 }
 
 function renderGameCard(g) {
+  // Time filter: hide entire game if outside 3-hour window
+  if(activeTab==='soon' && !gameStartsWithin3Hours(g)) return '';
+
   const allPlayers = buildPlayers(g);
   let filtered = [...allPlayers].sort((a,b)=>b.score-a.score);
   if(activeTab==='stars')     filtered = filtered.filter(p=>p.score>=80);
@@ -968,7 +997,7 @@ function renderGameCard(g) {
   if(activeTab==='confirmed') filtered = filtered.filter(p=>p.confirmed);
   if(activeTab==='targets')   filtered = filtered.filter(p=>targetSet.has(p.name));
   if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
-  if(!filtered.length && activeTab!=='all') return '';
+  if(!filtered.length && activeTab!=='all' && activeTab!=='soon') return '';
 
   const topPicks = allPlayers.sort((a,b)=>b.score-a.score).slice(0,2);
   const isExp = expandedGames.has(g.id);
@@ -1045,11 +1074,11 @@ function renderGameDetail(g, players) {
 
   let tableRows = '';
   if(confirmed.length){
-    tableRows += `<tr class="section-row"><td colspan="8">✓ Confirmed Lineup (${confirmed.length})</td></tr>`;
+    tableRows += `<tr class="section-row"><td colspan="9">✓ Confirmed Lineup (${confirmed.length})</td></tr>`;
     tableRows += confirmed.map(p=>playerRow(p,g)).join('');
   }
   if(projected.length){
-    tableRows += `<tr class="section-row"><td colspan="8">Projected / Not Yet Confirmed (${projected.length})</td></tr>`;
+    tableRows += `<tr class="section-row"><td colspan="9">Projected / Not Yet Confirmed (${projected.length})</td></tr>`;
     tableRows += projected.map(p=>playerRow(p,g)).join('');
   }
 
@@ -1072,6 +1101,7 @@ function renderGameDetail(g, players) {
           <th class="r" onclick="setSort('HR')">HR <span class="th-sort${sortCol==='HR'?' '+sortDir:''}"></span></th>
           <th class="r" onclick="setSort('barrel')">BARREL <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
           <th>EDGES</th>
+          <th class="r" onclick="setSort('hrProb')">HR% <span class="th-sort${sortCol==='hrProb'?' '+sortDir:''}"></span></th>
           <th class="r" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
@@ -1099,6 +1129,24 @@ function playerRow(p, g) {
   }
 
   const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
+
+  // Score breakdown tooltip
+  const bd = p.scoreBreakdown || {};
+  const tipItems = [
+    bd.platoon && {l: bd.platoon>0?'Platoon adv':'Platoon disadv', v: bd.platoon},
+    bd.wind    && {l: 'Wind', v: bd.wind},
+    bd.park    && {l: `Park (PF ${g.pf||100})`, v: bd.park},
+    bd.h2h     && {l: 'H2H matchup', v: bd.h2h},
+    bd.pitch   && {l: 'Pitch matchup', v: bd.pitch},
+    bd.elite_p && {l: 'Elite pitcher', v: bd.elite_p},
+    bd.vuln_p  && {l: 'Vuln pitcher', v: bd.vuln_p},
+    bd.fatigue && {l: 'Pitcher fatigued', v: bd.fatigue},
+    bd.barrel  && {l: 'Barrel power', v: bd.barrel},
+  ].filter(Boolean).filter(x=>x.v!==0);
+  const tipHtml = tipItems.length ? `<div class="score-tip">
+    <div class="stip-hd">Score Breakdown</div>
+    ${tipItems.map(x=>`<div class="stip-row"><span class="stip-lbl">${x.l}</span><span class="${x.v>0?'stip-pos':'stip-neg'}">${x.v>0?'+':''}${x.v}</span></div>`).join('')}
+  </div>` : '';
 
   const sprayRowHtml = expandedPlayer === p.name ? buildSprayRow(p) : '';
   return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
@@ -1142,11 +1190,16 @@ function playerRow(p, g) {
   <td class="td-edges">
     <div class="edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
   </td>
+  <td class="td-prob r">
+    ${(prob=>(prob>=15?`<span style="color:var(--green);font-weight:700">${prob.toFixed(1)}%</span>`:prob>=8?`<span style="color:var(--amber);font-weight:700">${prob.toFixed(1)}%</span>`:`<span style="color:var(--sub)">${prob.toFixed(1)}%</span>`))(p.hrProb||0)}
+  </td>
   <td class="td-score">
-    <div class="score-num score-${p.tier}">${p.score}</div>
+    <div class="score-wrap">
+      <div class="score-num score-${p.tier}">${p.score}</div>
+      ${tipHtml}
+    </div>
     <span class="tier-badge t${p.tier}">${p.tier}</span>
     <div class="prob-bar"><div class="prob-fill" style="width:${probWidth}%"></div></div>
-  </td>
   </td>
 </tr>${sprayRowHtml}`;
 }

@@ -144,6 +144,20 @@ PARK_FACTORS = {
     "TEX":109,"TOR":105,"WSH":95
 }
 
+# Park factors split by batter handedness (LHB pulls to RF, RHB pulls to LF)
+# Only defined where handedness creates a notable difference from the neutral PF
+PARK_FACTORS_HAND = {
+    "NYY": {"L":128,"R":100},  # 314ft RF short porch vs 399ft to LC
+    "BOS": {"L":126,"R": 98},  # 302ft Pesky Pole RF vs 379ft LC
+    "HOU": {"L":100,"R":118},  # 315ft Crawford Boxes LF benefits RHB
+    "CIN": {"L":112,"R":124},  # 325ft LF, RHB edge
+    "PHI": {"L":118,"R":110},  # 329ft RF vs 329ft LF roughly equal
+    "BAL": {"L":110,"R":102},  # 320ft RF porch
+    "PIT": {"L": 86,"R": 95},  # Deep RF (375ft RC), 325ft LF
+    "SF":  {"L":104,"R": 93},  # 309ft RF but 25ft wall; 339ft LF
+    "COL": {"L":152,"R":148},  # Altitude helps all, RF slightly shorter
+}
+
 # Known domes / retractable roofs (weather excluded when closed)
 DOMES = {"TBR","HOU","MIL","TEX","ARI","TOR","MIA","SEA"}
 
@@ -415,49 +429,61 @@ def fetch_injuries():
     return injured
 
 def fetch_batting_stats_savant():
-    """
-    Fetch season Statcast batting stats from Baseball Savant CSV endpoint.
-    Returns dict keyed by player name.
-    """
+    """Statcast batting stats: barrel%, EV, sweet spot%, xwOBA, xSLG from Baseball Savant."""
+    import csv as _csv, io as _io
     cached = cache_get("savant_batting")
     if cached: return cached
-
-    url = (
-        "https://baseballsavant.mlb.com/leaderboard/statcast"
-        "?type=batter&year=2026&position=&team=&min=10"
-        "&csv=true"
-    )
+    url1 = ("https://baseballsavant.mlb.com/leaderboard/statcast"
+            "?type=batter&year=2026&position=&team=&min_pa=10&csv=true")
+    url1_fallback = ("https://baseballsavant.mlb.com/leaderboard/statcast"
+                     "?type=batter&year=2026&position=&team=&min=10&csv=true")
+    url2 = ("https://baseballsavant.mlb.com/leaderboard/expected_statistics"
+            "?type=batter&year=2026&position=&team=&min=50&csv=true")
     try:
-        raw = fetch_savant(url)
-
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2:
-            return {}
-
-        headers = lines[0].split(",")
-        result = {}
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(headers):
-                continue
-            row = dict(zip(headers, cols))
-            name = row.get("player_name", "").strip()
-            if not name:
-                continue
+        raw1 = fetch_savant(url1).lstrip("﻿")
+        # Fallback URL if primary returns no data
+        if len(raw1.strip()) < 100:
+            raw1 = fetch_savant(url1_fallback).lstrip("﻿")
+        # Diagnose CSV headers on first parse to catch column name changes
+        _diag = next(_csv.DictReader(_io.StringIO(raw1)), None)
+        if _diag:
+            print(f"[savant_cols] {list(_diag.keys())[:10]}")
+        else:
+            print(f"[savant_cols] No rows — raw start: {raw1[:120]!r}")
+        result, id_map = {}, {}
+        for row in _csv.DictReader(_io.StringIO(raw1)):
+            name = _savant_name(row)
+            pid  = row.get("player_id", "").strip()
+            if not name: continue
             try:
                 result[name] = {
-                    "barrel_pct":    float(row.get("barrel_batted_rate", 0) or 0),
-                    "hard_hit_pct":  float(row.get("hard_hit_percent", 0) or 0),
-                    "avg_ev":        float(row.get("avg_hit_speed", 0) or 0),
-                    "xwoba":         float(row.get("xwoba", 0) or 0),
-                    "xslg":          float(row.get("xslg", 0) or 0),
-                    "sweet_spot_pct":float(row.get("sweet_spot_percent", 0) or 0),
-                    "launch_angle":  float(row.get("avg_launch_angle", 0) or 0),
-                    "pull_pct":      float(row.get("pull_percent", 0) or 0),
+                    "barrel_pct":     _safe_float(
+                        row.get("brl_percent") or row.get("brl_pa") or
+                        row.get("barrel_batted_rate") or row.get("brls_per_bbe_percent")),
+                    "hard_hit_pct":   _safe_float(
+                        row.get("ev95percent") or row.get("hard_hit_percent")),
+                    "avg_ev":         _safe_float(
+                        row.get("avg_hit_speed") or row.get("avg_exit_velocity")),
+                    "sweet_spot_pct": _safe_float(
+                        row.get("anglesweetspotpercent") or row.get("sweet_spot_percent")),
+                    "launch_angle":   _safe_float(
+                        row.get("avg_hit_angle") or row.get("avg_launch_angle")),
+                    "xwoba": 0.0, "xslg": 0.0, "pull_pct": 40.0,
                 }
-            except:
-                continue
-
+                if pid: id_map[pid] = name
+            except: continue
+        # Merge xwOBA / xSLG from expected stats endpoint
+        try:
+            raw2 = fetch_savant(url2).lstrip("﻿")
+            for row in _csv.DictReader(_io.StringIO(raw2)):
+                name = _savant_name(row)
+                pid  = row.get("player_id", "").strip()
+                key  = name if name in result else id_map.get(pid)
+                if key:
+                    result[key]["xwoba"] = _safe_float(row.get("est_woba"))
+                    result[key]["xslg"]  = _safe_float(row.get("est_slg"))
+        except Exception as e:
+            print(f"[expected_stats] Error: {e}")
         cache_set("savant_batting", result)
         print(f"[savant] Loaded {len(result)} batters")
         return result
@@ -828,31 +854,24 @@ def fetch_team_bullpen_era():
         return {}
 
 def fetch_pitcher_savant_allowed():
-    """Pitcher Statcast allowed stats: barrel%, hard hit% against — better vuln signal"""
+    """Pitcher Statcast allowed stats: barrel% and hard hit% against."""
+    import csv as _csv, io as _io
     cached = cache_get("pitcher_savant_allowed", ttl=SPLITS_TTL)
     if cached: return cached
-    url = (
-        "https://baseballsavant.mlb.com/leaderboard/statcast"
-        "?type=pitcher&year=2026&position=&team=&min=25&csv=true"
-    )
+    url = ("https://baseballsavant.mlb.com/leaderboard/statcast"
+           "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
     try:
-        raw  = fetch_savant(url)
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2: return {}
-        hdrs = lines[0].split(",")
-        result  = {}
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(hdrs): continue
-            row  = dict(zip(hdrs, cols))
-            name = row.get("player_name", "").strip()
+        raw = fetch_savant(url).lstrip("﻿")
+        result = {}
+        for row in _csv.DictReader(_io.StringIO(raw)):
+            name = _savant_name(row)
             if not name: continue
             try:
                 result[name] = {
-                    "barrel_allowed":   float(row.get("barrel_batted_rate", 0) or 0),
-                    "hard_hit_allowed": float(row.get("hard_hit_percent", 0) or 0),
-                    "xwoba_against":    float(row.get("xwoba", 0) or 0),
-                    "xslg_against":     float(row.get("xslg", 0) or 0),
+                    "barrel_allowed":   _safe_float(row.get("brl_percent") or row.get("brl_pa")),
+                    "hard_hit_allowed": _safe_float(row.get("ev95percent")),
+                    "xwoba_against":    0.0,
+                    "xslg_against":     0.0,
                 }
             except: continue
         cache_set("pitcher_savant_allowed", result)
@@ -934,22 +953,17 @@ def fetch_prizepicks_mlb():
         return {}
 
 def fetch_sprint_speed():
-    """Sprint speed from Baseball Savant — displayed in player cards."""
+    """Sprint speed from Baseball Savant."""
+    import csv as _csv, io as _io
     cached = cache_get("sprint_speed", ttl=SPLITS_TTL)
     if cached: return cached
     url = ("https://baseballsavant.mlb.com/leaderboard/sprint_speed"
            "?min_competitive=50&player_type=batter&year=2026&csv=true")
     try:
-        raw  = fetch_savant(url)
-        lines = [l for l in raw.strip().split("\n") if l]
-        if len(lines) < 2: return {}
-        hdrs = lines[0].split(",")
-        result  = {}
-        for line in lines[1:]:
-            cols = line.split(",")
-            if len(cols) < len(hdrs): continue
-            row  = dict(zip(hdrs, cols))
-            name = row.get("player_name", "").strip()
+        raw = fetch_savant(url).lstrip("﻿")
+        result = {}
+        for row in _csv.DictReader(_io.StringIO(raw)):
+            name = _savant_name(row)
             if not name: continue
             try:
                 result[name] = round(float(row.get("sprint_speed", 0) or 0), 1)
@@ -962,12 +976,25 @@ def fetch_sprint_speed():
         return {}
 
 def _savant_name(row):
-    """Convert Savant 'Last, First' name column to 'First Last'."""
+    """Parse Savant player name — handles all known CSV column formats."""
+    # Format 1: "last_name, first_name" combined column (legacy + current leaderboard)
     raw = row.get("last_name, first_name", "").strip()
-    if not raw:
-        return row.get("player_name", "").strip()
-    parts = raw.split(", ", 1)
-    return f"{parts[1]} {parts[0]}" if len(parts) == 2 else raw
+    if raw:
+        parts = raw.split(", ", 1)
+        return f"{parts[1]} {parts[0]}" if len(parts) == 2 else raw
+    # Format 2: player_name column (may be "First Last" or "Last, First")
+    pn = row.get("player_name", "").strip()
+    if pn:
+        if "," in pn:
+            parts = pn.split(", ", 1)
+            return f"{parts[1]} {parts[0]}" if len(parts) == 2 else pn
+        return pn
+    # Format 3: separate first_name / last_name columns (newer export format)
+    first = row.get("first_name", "").strip()
+    last  = row.get("last_name", "").strip()
+    if first and last:
+        return f"{first} {last}"
+    return ""
 
 
 def fetch_pitcher_arsenal():
@@ -996,6 +1023,7 @@ def fetch_pitcher_arsenal():
                     "hard_hit_allow": _safe_float(row.get("hard_hit_percent")),
                     "whiff_pct":      _safe_float(row.get("whiff_percent")),
                     "run_val_100":    _safe_float(row.get("run_value_per_100")),
+                    "velocity":       _safe_float(row.get("avg_speed") or row.get("avg_velocity") or 0),
                 }
             except: continue
         cache_set("pitcher_arsenal", result)
@@ -1366,8 +1394,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    home_away_splits=None, is_home=False,
                    monthly_stats=None, bullpen_era=4.50,
                    pitcher_sav=None, ump_score=0.0, game_total=0.0,
-                   h2h=None,
-                   pitch_matchup_adj=0):
+                   h2h=None, pitch_matchup_adj=0, explain=False):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -1434,9 +1461,13 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
         pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
         pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
 
+    # Handedness-adjusted park factor (LHB → RF distance matters, RHB → LF)
+    effective_pf = PARK_FACTORS_HAND.get(home_team, {}).get(
+        "L" if bats in ("L", "S") else "R", pf)
+
     situ = 0
     situ += max(0, min(100, pv)) * 0.25        # pitcher vuln: was 0.17, now 0.25
-    situ += ((pf - 100) / 50) * 12             # park: was 8, now 12
+    situ += ((effective_pf - 100) / 50) * 12   # park: handedness-adjusted
     situ += wind_adj(wx) * 0.70                # wind: was 0.48, now 0.70
     situ += temp_adj(wx.get("temp", 72))
     situ += baro_adj(wx.get("pressure", 1013))
@@ -1450,7 +1481,22 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    return max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj)))
+    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj)))
+
+    if explain:
+        breakdown = {
+            "platoon": round(platoon_adj(bats, ph)),
+            "wind":    round(wind_adj(wx) * 0.70),
+            "park":    round(((effective_pf - 100) / 50) * 12),
+            "h2h":     h2h_adj(h2h),
+            "pitch":   pitch_matchup_adj,
+            "elite_p": -12 if q == "elite" else 0,
+            "vuln_p":  round((era - 3.5) * 5.5 + 16) if q == "danger" else 0,
+            "fatigue": 7 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
+            "barrel":  round(min((savant_stats.get("barrel_pct", 8) - 8) * 0.7, 8)),
+        }
+        return score, breakdown
+    return score
 
 
 def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
@@ -1613,6 +1659,14 @@ def build_daily_data(date_str):
             g[side]["starts"] = plog.get("starts", [])   # real per-start lines
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
+            # Real velocity from Savant pitch arsenal (fastball/sinker primary)
+            if not g[side].get("vel") or g[side].get("vel") == 92.5:
+                p_ars = pitcher_arsenal.get(name, {})
+                for fb_type in ("FF", "SI", "FT", "FC"):
+                    v = p_ars.get(fb_type, {}).get("velocity", 0)
+                    if v > 0:
+                        g[side]["vel"] = round(v, 1)
+                        break
             # Apply correct throwing hand from MLB people API
             if pid:
                 det = pitcher_details.get(pid, {})
@@ -1670,7 +1724,7 @@ def build_daily_data(date_str):
                 opp_pitcher.get("name",""), name, pitcher_arsenal, batter_pitch_data)
             # Enhanced spray angle adjustment using real park dimensions
             spray = calc_spray_park_adj(roster_info.get("bats","R"), home, sav.get("pull_pct",40))
-            score = calc_composite(
+            score, breakdown = calc_composite(
                 bat_stat, sav, opp_pitcher, pf, wx,
                 recent_stats=recent_stat,
                 pitcher_log=pitcher_log,
@@ -1685,6 +1739,7 @@ def build_daily_data(date_str):
                 game_total=game_total,
                 h2h=h2h,
                 pitch_matchup_adj=p_adj,
+                explain=True,
             )
             tier = get_tier(score)
 
@@ -1743,6 +1798,7 @@ def build_daily_data(date_str):
                 "gameId":           g["id"],
                 "score":            score,
                 "tier":             tier,
+                "scoreBreakdown":   breakdown,
             })
 
         # ── Diagnostic: print filter counts when a game has 0 players ──────────
