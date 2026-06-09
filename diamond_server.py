@@ -1807,39 +1807,42 @@ def build_daily_data(date_str):
         all_game_teams.add(g["away"])
         all_game_teams.add(g["home"])
 
-    # ── Step 2: Fetch EVERYTHING in one parallel batch (hard 22s wall-clock cap) ─
-    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=30)
-    # Core data
+    # ── Step 2: Kick off slow Savant fetches in background (cache-only in main build) ─
+    # These hit Baseball Savant CSVs and can take 10-30s. We start them as daemons so
+    # they warm the cache for the NEXT request without blocking this one.
+    def _bg(*fns):
+        for fn in fns:
+            threading.Thread(target=fn, daemon=True).start()
+    if not cache_get("savant_batting"):   _bg(fetch_batting_stats_savant)
+    if not cache_get("sprint_speed"):     _bg(fetch_sprint_speed)
+    if not cache_get("pitcher_arsenal"):  _bg(fetch_pitcher_arsenal)
+    if not cache_get("batter_pitch_stats"): _bg(fetch_batter_pitch_stats)
+    if not cache_get("pitcher_savant_allowed"): _bg(fetch_pitcher_savant_allowed)
+
+    # ── Step 3: Fetch core data in parallel — all MLB Stats API (fast, reliable) ──
+    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
     f_batting  = _ex.submit(fetch_batting_season_stats)
     f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
-    f_savant   = _ex.submit(fetch_batting_stats_savant)
+    f_savant   = _ex.submit(lambda: cache_get("savant_batting") or {})
     f_40man    = _ex.submit(fetch_40man_roster)
     f_rosters  = _ex.submit(fetch_active_rosters)
     f_injuries = _ex.submit(fetch_injuries)
-    # Enrichment (longer TTL, fail gracefully)
     f_homeaway = _ex.submit(fetch_home_away_splits)
     f_monthly  = _ex.submit(fetch_monthly_batting)
     f_platoon  = _ex.submit(fetch_platoon_splits)
     f_bullpen  = _ex.submit(fetch_team_bullpen_era)
-    f_psav     = _ex.submit(fetch_pitcher_savant_allowed)
-    # New free integrations
+    f_psav     = _ex.submit(lambda: cache_get("pitcher_savant_allowed") or {})
     f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
-    f_sprint   = _ex.submit(fetch_sprint_speed)
+    f_sprint   = _ex.submit(lambda: cache_get("sprint_speed") or {})
     f_totals   = _ex.submit(fetch_game_totals, date_str)
-    # All pitcher stats + logs in parallel
     f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
     f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
-    # All weather in parallel
-    f_wx = {}
-    for gid, (home, hour) in game_wx_keys.items():
-        f_wx[gid] = _ex.submit(fetch_weather, home, hour)
-    # Pitcher throwing hand (batch), active 26-man rosters, H2H matchups
+    f_wx = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
     f_pitcher_details = _ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
     f_active = {team: _ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
     f_h2h    = {pid: _ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
-    f_p_arsenal    = _ex.submit(fetch_pitcher_arsenal)
-    f_b_pitch      = _ex.submit(fetch_batter_pitch_stats)
-    # Wait max BATCH_TIMEOUT seconds — anything still running gets abandoned (returns {})
+    f_p_arsenal = _ex.submit(lambda: cache_get("pitcher_arsenal") or {})
+    f_b_pitch   = _ex.submit(lambda: cache_get("batter_pitch_stats") or {})
     _all = ([f_batting,f_recent,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
              f_monthly,f_platoon,f_bullpen,f_psav,f_ump_live,f_sprint,f_totals,
              f_pitcher_details,f_p_arsenal,f_b_pitch]
