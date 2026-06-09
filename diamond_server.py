@@ -353,16 +353,18 @@ def fetch_schedule(date_str):
         return []
 
 def fetch_pitcher_stats(pitcher_id):
-    """Fetch ERA, K%, BB%, GB%, FB% from MLB stats API"""
+    """Fetch ERA, WHIP, GB%, and primary FB velocity from MLB Stats API."""
     if not pitcher_id:
         return {}
     cached = cache_get(f"pitcher_{pitcher_id}")
     if cached: return cached
 
-    url = (f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
-           f"?stats=season&group=pitching&season=2026")
+    url_season  = (f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
+                   f"?stats=season&group=pitching&season=2026")
+    url_arsenal = (f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}/stats"
+                   f"?stats=pitchArsenal&group=pitching&season=2026")
     try:
-        data = fetch(url)
+        data = fetch(url_season)
         splits = data.get("stats", [{}])[0].get("splits", [])
         if not splits:
             return {}
@@ -375,11 +377,23 @@ def fetch_pitcher_stats(pitcher_id):
             "bb9":    float(s.get("walksPer9", 3.0)),
             "gbPct":  float(s.get("groundOutsToAirouts", 1.0)),
         }
-        # Infer quality tier
         era = result["era"]
         result["quality"] = "elite" if era < 2.80 else "danger" if era > 4.80 else "mid"
         result["fbPct"] = 38  # default; Statcast endpoint needed for exact
-        result["vel"] = 92.5  # default; Savant needed for exact
+
+        # Real primary FB velocity from pitchArsenal endpoint
+        result["vel"] = 92.5
+        try:
+            ars = fetch(url_arsenal)
+            for split in ars.get("stats", [{}])[0].get("splits", []):
+                pt   = split.get("stat", {}).get("type", {}).get("code", "")
+                spd  = split.get("stat", {}).get("averageSpeed", 0)
+                if pt in ("FF", "SI", "FT", "FC") and spd > 0:
+                    result["vel"] = round(spd, 1)
+                    break
+        except Exception:
+            pass
+
         cache_set(f"pitcher_{pitcher_id}", result)
         return result
     except Exception as e:
@@ -1659,14 +1673,6 @@ def build_daily_data(date_str):
             g[side]["starts"] = plog.get("starts", [])   # real per-start lines
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
-            # Real velocity from Savant pitch arsenal (fastball/sinker primary)
-            if not g[side].get("vel") or g[side].get("vel") == 92.5:
-                p_ars = pitcher_arsenal.get(name, {})
-                for fb_type in ("FF", "SI", "FT", "FC"):
-                    v = p_ars.get(fb_type, {}).get("velocity", 0)
-                    if v > 0:
-                        g[side]["vel"] = round(v, 1)
-                        break
             # Apply correct throwing hand from MLB people API
             if pid:
                 det = pitcher_details.get(pid, {})
