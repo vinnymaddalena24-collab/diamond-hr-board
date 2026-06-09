@@ -249,6 +249,27 @@ table.pt th.c{text-align:center}
 .slip-copy:hover{opacity:.88} .slip-copy:disabled{opacity:.35;cursor:not-allowed}
 .slip-clear{width:100%;background:transparent;border:1px solid var(--border);color:var(--muted);padding:6px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;border-radius:6px;margin-top:5px;transition:all .1s}
 .slip-clear:hover{border-color:var(--red);color:var(--red)}
+/* ── SLIP BOT ── */
+.bot-wrap{padding:11px 13px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.45)}
+.bot-label{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:6px}
+.bot-count-row{display:flex;gap:5px}
+.bot-cnt{flex:1;background:var(--card);border:1px solid var(--border);color:var(--blue);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.5px;padding:7px 4px;border-radius:5px;cursor:pointer;transition:all .12s}
+.bot-cnt:hover{background:rgba(59,130,246,.14);border-color:var(--blue);transform:translateY(-1px)}
+.bot-cnt:active{transform:none}
+.bot-grade-row{display:flex;gap:4px;margin-bottom:8px}
+.bot-grade{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:5px 2px;border-radius:4px;cursor:pointer;transition:all .12s}
+.bot-grade.on{background:rgba(59,130,246,.08)}
+.bot-grade.t-s.on{border-color:var(--s);color:var(--s);background:rgba(168,85,247,.1)}
+.bot-grade.t-a.on{border-color:var(--a);color:var(--a);background:rgba(16,185,129,.1)}
+.bot-grade.t-b.on{border-color:var(--b);color:var(--b);background:rgba(59,130,246,.1)}
+.bot-grade:not(.t-s):not(.t-a):not(.t-b).on{border-color:var(--border2);color:var(--sub)}
+.bot-input-row{display:flex;gap:5px;margin-bottom:5px}
+.bot-input{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:9px;padding:6px 8px;border-radius:4px;outline:none}
+.bot-input::placeholder{color:var(--muted)}
+.bot-input:focus{border-color:var(--blue)}
+.bot-send{background:var(--blue);border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:6px 11px;border-radius:4px;cursor:pointer;transition:opacity .1s;flex-shrink:0}
+.bot-send:hover{opacity:.85}
+.bot-msg{font-family:'JetBrains Mono',monospace;font-size:8px;min-height:11px;line-height:1.5;color:var(--green)}
 
 /* ── SEARCH PANEL ── */
 .search-panel{padding:20px;display:none}
@@ -412,6 +433,29 @@ table.pt th.c{text-align:center}
       <span class="slip-title">Parlay Slip</span>
       <span class="slip-ct" id="slipCt">0</span>
     </div>
+
+    <!-- SLIP BOT -->
+    <div class="bot-wrap">
+      <div class="bot-label">⚡ QUICK BUILD</div>
+      <div class="bot-count-row">
+        <button class="bot-cnt" onclick="quickBuild(2)">2-MAN</button>
+        <button class="bot-cnt" onclick="quickBuild(3)">3-MAN</button>
+        <button class="bot-cnt" onclick="quickBuild(4)">4-MAN</button>
+      </div>
+      <div class="bot-label" style="margin-top:8px">MIN GRADE</div>
+      <div class="bot-grade-row">
+        <button class="bot-grade t-s" data-g="S" onclick="setBotGrade(this,'S')">S</button>
+        <button class="bot-grade t-a on" data-g="A" onclick="setBotGrade(this,'A')">A</button>
+        <button class="bot-grade t-b" data-g="B" onclick="setBotGrade(this,'B')">B</button>
+        <button class="bot-grade" data-g="any" onclick="setBotGrade(this,'any')">ANY</button>
+      </div>
+      <div class="bot-input-row">
+        <input id="botInput" class="bot-input" placeholder='e.g. "best 4 man A tier"' onkeydown="if(event.key==='Enter')botChat()">
+        <button class="bot-send" onclick="botChat()">→</button>
+      </div>
+      <div id="botMsg" class="bot-msg"></div>
+    </div>
+
     <div class="slip-body" id="slipBody"></div>
     <div class="slip-ft" id="slipFt" style="display:none">
       <div class="slip-stat"><span>LEGS</span><span class="v" id="sfLegs">0</span></div>
@@ -1287,6 +1331,111 @@ function toggleLeg(p) {
 }
 function removeLeg(name) { legs=legs.filter(l=>l.name!==name); renderSlip(); render(); }
 function clearSlip() { legs=[]; renderSlip(); render(); }
+
+// ═══════════════════════════════════════════════════
+// SLIP BOT
+// ═══════════════════════════════════════════════════
+let botGrade = 'A';
+
+function setBotGrade(el, grade) {
+  botGrade = grade;
+  document.querySelectorAll('.bot-grade').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function gradeMinScore(g) {
+  return {S:80, A:65, B:50, any:0}[g] ?? 0;
+}
+
+function botPlayerPool() {
+  return activeGames.flatMap(g => buildPlayers(g).map(p => ({
+    name: p.name, team: p.team, gameId: p.gameId,
+    score: p.score, tier: p.tier, pitcher: p.pitcher.n,
+    hrPct: p.hrPct, barrel: p.barrel, hrProb: p.hrProb||0
+  })));
+}
+
+function quickBuild(n) {
+  const min = gradeMinScore(botGrade);
+  const pool = botPlayerPool().filter(p => p.score >= min);
+  if (pool.length < n) {
+    botMsg(`Only ${pool.length} ${botGrade === 'any' ? '' : botGrade + '+ '}players available`, 'warn');
+    return;
+  }
+  // Shuffle then prefer one player per game to avoid same-game parlays
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const picks = [], usedGames = new Set();
+  for (const p of shuffled) {
+    if (picks.length >= n) break;
+    if (!usedGames.has(p.gameId)) { picks.push(p); usedGames.add(p.gameId); }
+  }
+  // Fill remainder if we ran out of cross-game players
+  for (const p of shuffled) {
+    if (picks.length >= n) break;
+    if (!picks.find(x => x.name === p.name)) picks.push(p);
+  }
+  legs = picks.slice(0, n);
+  renderSlip(); render();
+  const label = botGrade === 'any' ? 'ANY' : botGrade + '+';
+  botMsg(`✓ ${n}-man ${label} slip built`);
+}
+
+function botMsg(text, type) {
+  const el = document.getElementById('botMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = type === 'warn' ? 'var(--amber)' : 'var(--green)';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.textContent = '', 3800);
+}
+
+function botChat() {
+  const inp = document.getElementById('botInput');
+  const q = (inp.value || '').trim().toLowerCase();
+  if (!q) return;
+  inp.value = '';
+
+  // Parse leg count
+  const numMap = {one:1,two:2,three:3,four:4,five:5,six:6};
+  let n = 3;
+  for (const [w,v] of Object.entries(numMap)) if (q.includes(w)) { n = v; break; }
+  const dm = q.match(/\b([2-6])\b/); if (dm) n = parseInt(dm[1]);
+  n = Math.max(2, Math.min(6, n));
+
+  // Parse grade
+  let grade = botGrade;
+  if (/\bs\b|s.tier|elite|s-tier/.test(q))       grade = 'S';
+  else if (/\ba\b|a.tier|a-tier/.test(q))          grade = 'A';
+  else if (/\bb\b|b.tier|b-tier/.test(q))          grade = 'B';
+  else if (/any|all|every/.test(q))                grade = 'any';
+
+  // Sync grade UI
+  botGrade = grade;
+  document.querySelectorAll('.bot-grade').forEach(b => b.classList.toggle('on', b.dataset.g === grade));
+
+  // "best/top" → sorted by score, not random
+  if (/best|top|highest|ranked/.test(q)) {
+    const min = gradeMinScore(grade);
+    const pool = botPlayerPool().filter(p => p.score >= min).sort((a,b) => b.score - a.score);
+    if (pool.length < n) { botMsg(`Only ${pool.length} players in that range`, 'warn'); return; }
+    // Dedupe by game
+    const picks = [], used = new Set();
+    for (const p of pool) {
+      if (picks.length >= n) break;
+      if (!used.has(p.gameId)) { picks.push(p); used.add(p.gameId); }
+    }
+    for (const p of pool) {
+      if (picks.length >= n) break;
+      if (!picks.find(x => x.name === p.name)) picks.push(p);
+    }
+    legs = picks.slice(0, n);
+    renderSlip(); render();
+    botMsg(`✓ Top ${n} ${grade === 'any' ? '' : grade + '+ '}players added`);
+    return;
+  }
+
+  quickBuild(n);
+}
 function renderSlip() {
   const n = legs.length;
   document.getElementById('slipCt').textContent = n;
