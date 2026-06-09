@@ -1776,10 +1776,15 @@ def build_daily_data(date_str):
     cached = cache_get(f"daily_{date_str}")
     if cached: return cached
 
+    _t0 = time.time()
+    def _lap(label):
+        print(f"[build] {label} +{round(time.time()-_t0,1)}s")
+
     print(f"[build] Fetching fresh data for {date_str}...")
 
     # ── Step 1: Schedule first (need pitcher IDs + game list for step 2) ─────
     games = fetch_schedule(date_str)
+    _lap(f"schedule done — {len(games)} games")
 
     # Collect unique pitcher IDs, game hours, and teams
     pitcher_ids = set()
@@ -1842,6 +1847,7 @@ def build_daily_data(date_str):
             + list(f_wx.values()) + list(f_active.values()) + list(f_h2h.values()))
     concurrent.futures.wait(_all, timeout=BATCH_TIMEOUT)
     _ex.shutdown(wait=False)
+    _lap("parallel batch done")
 
     # Collect results safely — futures not done within BATCH_TIMEOUT return {}
     def safe(f):
@@ -2060,9 +2066,8 @@ def build_daily_data(date_str):
     }
 
     cache_set(f"daily_{date_str}", result)
-    # Log today's predictions for tomorrow's hit-rate grading
     log_predictions(date_str, all_players)
-    print(f"[build] Done — {len(games)} games, {len(all_players)} players")
+    _lap(f"DONE — {len(games)} games, {len(all_players)} players")
     return result
 
 # ── HTTP SERVER ───────────────────────────────────────────────────────────────
@@ -2113,6 +2118,9 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 self.send_json({"error": str(e)}, 500)
+
+        elif path in ("/health", "/api/health"):
+            self.send_json({"ok": True, "ts": int(time.time())})
 
         elif path == "/api/status":
             date_str, _ = get_today_str()
