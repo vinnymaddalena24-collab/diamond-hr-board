@@ -1032,7 +1032,7 @@ async function loadDay(dateObj) {
 function updateDateUI(d) {
   const ds = displayDate(d);
   document.getElementById('hdrDate').textContent = ds;
-  document.getElementById('picksDate').textContent = ds;
+  const pd = document.getElementById('picksDate'); if(pd) pd.textContent = ds;
   const isToday = d.toDateString() === (new Date()).toDateString();
   document.getElementById('todayBtn').classList.toggle('today', isToday);
 }
