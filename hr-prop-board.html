@@ -97,6 +97,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .gc-hdr-conds{display:flex;gap:4px;flex-wrap:wrap;flex:1;align-items:center}
 .gc-toggle{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--blue);white-space:nowrap;display:flex;align-items:center;gap:6px}
 .gc-live{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.3);flex-shrink:0}
+.lock-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 8px;border-radius:4px;flex-shrink:0;letter-spacing:.3px}
+.lock-badge.soon{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);color:var(--amber)}
+.lock-badge.imminent{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.45);color:var(--red);animation:pulse 1.2s ease-in-out infinite}
+.lock-badge.locked{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:var(--red)}
 /* Row 2: pitcher pills */
 .gc-pitchers-row{display:flex;gap:6px;flex-wrap:nowrap}
 .gc-pp{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;flex:1}
@@ -581,18 +585,31 @@ function scoreColor(t) { return {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(-
 function platAdj(bats, ph) { if(bats==='S') return 4; return bats!==ph?8:-4; }
 function eraClass(era) { return era<2.80?'elite':era>4.80?'danger':'mid'; }
 
-function gameStartsWithin3Hours(g) {
+function parseGameET(g) {
   const match = (g.time||'').match(/(\d+):(\d+)\s+(AM|PM)/i);
-  if (!match) return true;
+  if (!match) return null;
   let h = parseInt(match[1]), m = parseInt(match[2]);
   const ap = match[3].toUpperCase();
   if (ap === 'PM' && h !== 12) h += 12;
   if (ap === 'AM' && h === 12) h = 0;
-  // Convert to ET (UTC-4 summer)
   const nowET = new Date(Date.now() - 4 * 3600000);
   const gameET = new Date(nowET); gameET.setHours(h, m, 0, 0);
-  const diffH = (gameET - nowET) / 3600000;
-  return diffH >= -0.5 && diffH <= 3; // started up to 30min ago or starts within 3h
+  return gameET;
+}
+function minutesToGame(g) {
+  const gameET = parseGameET(g); if (!gameET) return 999;
+  return Math.round((gameET - new Date(Date.now() - 4*3600000)) / 60000);
+}
+function gameStartsWithin3Hours(g) {
+  const mins = minutesToGame(g);
+  return mins >= -30 && mins <= 180;
+}
+function lockBadgeHtml(g) {
+  const mins = minutesToGame(g);
+  if (mins <= 0 && mins >= -30) return `<span class="lock-badge locked">⚾ IN PROGRESS</span>`;
+  if (mins > 0 && mins <= 10)   return `<span class="lock-badge imminent">🔒 LOCKS ${mins}m</span>`;
+  if (mins > 0 && mins <= 45)   return `<span class="lock-badge soon">🔒 LOCKS ${mins}m</span>`;
+  return '';
 }
 
 function formDots(recentEra, era, fatigued, starts) {
@@ -912,6 +929,8 @@ async function loadDay(dateObj) {
     }
     render();
     autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
+    // Re-render countdown badges every 60s without a network call
+    if (!window._lockTimer) window._lockTimer = setInterval(render, 60000);
   } catch(err) {
     console.warn(err);
     setStatus('err','NO SERVER');
@@ -1098,6 +1117,7 @@ function renderGameCard(g) {
         </div>
         <div class="gc-hdr-conds">${condBadges(g)}</div>
         <div class="gc-toggle">
+          ${lockBadgeHtml(g)}
           ${wx.dome?'<span class="gc-live">DOME</span>':''}
           <span>${arrow} ${isExp ? 'HIDE' : allPlayers.length + ' PLAYERS'}</span>
         </div>
@@ -1217,20 +1237,42 @@ function playerRow(p, g) {
 
   const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
 
-  // Score breakdown tooltip
-  const bd = p.scoreBreakdown || {};
-  const tipItems = [
-    bd.platoon && {l: bd.platoon>0?'Platoon adv':'Platoon disadv', v: bd.platoon},
-    bd.recency && {l: bd.recency>0?'Hot streak 🔥':'Cold streak ❄️', v: bd.recency},
-    bd.wind    && {l: 'Wind', v: bd.wind},
-    bd.park    && {l: `Park (PF ${g.pf||100})`, v: bd.park},
-    bd.h2h     && {l: 'H2H matchup', v: bd.h2h},
-    bd.pitch   && {l: 'Pitch matchup', v: bd.pitch},
-    bd.elite_p && {l: 'Elite pitcher', v: bd.elite_p},
-    bd.vuln_p  && {l: 'Vuln pitcher', v: bd.vuln_p},
-    bd.fatigue && {l: 'Pitcher fatigued', v: bd.fatigue},
-    bd.barrel  && {l: 'Barrel power', v: bd.barrel},
-  ].filter(Boolean).filter(x=>x.v!==0);
+  // Score breakdown tooltip — use server breakdown if available, else derive from client data
+  const bd = p.scoreBreakdown || null;
+  let tipItems;
+  if (bd) {
+    tipItems = [
+      bd.platoon != null && {l: bd.platoon>0?'Platoon adv':'Platoon disadv', v: bd.platoon},
+      bd.recency         && {l: bd.recency>0?'Hot streak 🔥':'Cold streak ❄️', v: bd.recency},
+      bd.wind            && {l: 'Wind', v: bd.wind},
+      bd.park            && {l: `Park (PF ${g.pf||100})`, v: bd.park},
+      bd.h2h             && {l: 'H2H matchup', v: bd.h2h},
+      bd.pitch           && {l: 'Pitch matchup', v: bd.pitch},
+      bd.elite_p         && {l: 'Elite pitcher', v: bd.elite_p},
+      bd.vuln_p          && {l: 'Pitcher danger', v: bd.vuln_p},
+      bd.fatigue         && {l: 'Pitcher fatigued', v: bd.fatigue},
+      bd.barrel          && {l: 'Barrel power', v: bd.barrel},
+    ].filter(Boolean).filter(x => x.v !== 0);
+  } else {
+    // Fallback: derive key components from data already on the client
+    const platV = platAdj(p.bats, p.pitcher.h);
+    const parkV = Math.round(((g.pf||100) - 100) / 50 * 12);
+    const barrelV = Math.round(Math.min(((p.barrel||0) - 8) * 0.7, 8));
+    const windV = (() => {
+      const wx = activeWX[g.id]||{};
+      if (wx.dome || !wx.wind_mph) return 0;
+      const m = wx.wind_mph; const d = wx.direction;
+      if (d==='out') return Math.round(m * 0.55 * 0.70);
+      if (d==='in')  return -Math.round(m * 0.65 * 0.70);
+      return 0;
+    })();
+    tipItems = [
+      { l: platV>0?'Platoon adv':'Platoon disadv', v: platV },
+      windV  !== 0 && { l: 'Wind',         v: windV  },
+      parkV  !== 0 && { l: `Park (PF ${g.pf||100})`, v: parkV },
+      barrelV!== 0 && { l: 'Barrel power', v: barrelV },
+    ].filter(Boolean).filter(x => x.v !== 0);
+  }
   const tipHtml = tipItems.length ? `<div class="score-tip">
     <div class="stip-hd">Score Breakdown</div>
     ${tipItems.map(x=>`<div class="stip-row"><span class="stip-lbl">${x.l}</span><span class="${x.v>0?'stip-pos':'stip-neg'}">${x.v>0?'+':''}${x.v}</span></div>`).join('')}
@@ -1570,10 +1612,24 @@ function renderSlip() {
   document.getElementById('slipCopyBtn').disabled = n < 2;
 }
 function copySlip() {
-  const txt = `DIAMOND HR PARLAY — ${displayDate(currentDate)}\n`
-    + legs.map(l=>`${l.name} (${l.team}) vs ${l.pitcher} | Composite: ${l.score}`).join('\n')
-    + `\n\nEst Odds: ${document.getElementById('sfOdds').textContent}`
-    + `\nGenerated: ${new Date().toLocaleString()}`;
+  const tierEmoji = {S:'💎',A:'🔥',B:'⚡',C:'📊',D:'📉'};
+  const tierColor = {S:'S-TIER',A:'A-TIER',B:'B-TIER',C:'C-TIER',D:'D-TIER'};
+  const odds = document.getElementById('sfOdds').textContent;
+  const dateStr = displayDate(currentDate);
+  const lines = legs.map(l => {
+    const t = tierOf(l.score);
+    const emoji = tierEmoji[t] || '⚾';
+    const hrProb = l.hrProb > 0 ? ` · ${l.hrProb.toFixed(1)}% HR` : '';
+    return `${emoji} **${l.name}** (${l.team}) ${tierColor[t]} [${l.score}/99]\n   ↳ vs ${l.pitcher}${hrProb}`;
+  });
+  const txt = [
+    `⚾ **DIAMOND HR PARLAY** — ${dateStr}`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    ...lines,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `📈 Est. Odds: **${odds}** · ${legs.length}-leg parlay`,
+    `_via DIAMOND prop board_`,
+  ].join('\n');
   navigator.clipboard?.writeText(txt);
   const b = document.getElementById('slipCopyBtn'); b.textContent='✓ COPIED';
   setTimeout(()=>b.textContent='COPY SLIP', 2200);
