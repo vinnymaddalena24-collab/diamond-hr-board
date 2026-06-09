@@ -979,6 +979,11 @@ async function loadDay(dateObj) {
     const res = await fetch(`${API_BASE}/api/data?date=${ds}`,{cache:'no-store'});
     if(!res.ok) throw new Error(`Server ${res.status}`);
     const data = await res.json();
+    if (data.building) {
+      document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="spinner"></div>BUILDING PROJECTIONS — this takes ~15 seconds on first load...</div>`;
+      setTimeout(() => loadDay(dateObj), 5000);
+      return;
+    }
     serverTop5    = data.top5 || [];
     serverInjuries= data.injuryList || [];
     bustPlayersCache();

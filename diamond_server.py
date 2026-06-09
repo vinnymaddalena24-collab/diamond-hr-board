@@ -2119,21 +2119,22 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/api/data":
             date_str = params.get("date", [get_today_str()[0]])[0]
-            try:
-                _result = [None, None]
-                def _run():
-                    try: _result[0] = build_daily_data(date_str)
-                    except Exception as e: _result[1] = e
-                t = threading.Thread(target=_run, daemon=True)
-                t.start(); t.join(timeout=28)
-                if _result[1]: raise _result[1]
-                if _result[0] is None:
-                    self.send_json({"error":"build timeout","games":[],"top5":[],"injuryList":[],"date":date_str}, 200)
-                else:
-                    self.send_json(_result[0])
-            except Exception as e:
-                traceback.print_exc()
-                self.send_json({"error": str(e)}, 500)
+            # Return cached data immediately if available
+            cached = cache_get(f"daily_{date_str}")
+            if cached:
+                self.send_json(cached)
+            else:
+                # Start build in background; tell frontend to retry in 4s
+                def _bg():
+                    try: build_daily_data(date_str)
+                    except Exception as e: print(f"[build-bg] {e}")
+                threading.Thread(target=_bg, daemon=True).start()
+                self.send_json({
+                    "building": True,
+                    "date": date_str,
+                    "games": [], "top5": [], "injuryList": [],
+                    "cacheExpires": int(time.time()) + 4,
+                })
 
         elif path in ("/health", "/api/health"):
             self.send_json({"ok": True, "ts": int(time.time())})
