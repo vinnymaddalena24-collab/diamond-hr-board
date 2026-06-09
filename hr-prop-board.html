@@ -625,7 +625,7 @@ async function fetchSprayData(player) {
 }
 
 function buildSprayInner(player, events) {
-  const photo = player.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${player.mlbId}.jpg" onerror="this.style.display='none'">` : '';
+  const photo = player.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${player.mlbId}/headshot/67/current">` : '';
   const hrs  = events.filter(e=>e.event==='home_run').length;
   const hits = events.filter(e=>['single','double','triple'].includes(e.event)).length;
   const outs = events.filter(e=>!['home_run','single','double','triple'].includes(e.event)).length;
@@ -934,7 +934,7 @@ function renderPicks() {
   const labels = ['#1 PICK','#2','#3','#4','#5'];
   document.getElementById('picksRow').innerHTML = serverTop5.map((p,i)=>{
     const t = p.tier||tierOf(p.score||0);
-    const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
+    const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
     return `<div class="pick-card c${t}${i===0?' rank1':''}" onclick="scrollToGame('${p.gameId||''}')">
       <div class="pick-photo">⚾${photo}</div>
       <div class="pick-info">
@@ -1137,7 +1137,7 @@ function renderGameDetail(g, players) {
 function playerRow(p, g) {
   const sel = legs.find(l=>l.name===p.name);
   const isTgt = targetSet.has(p.name);
-  const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
+  const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
   const sc = scoreColor(p.tier);
   const edges = computeEdges(p, g);
   const probWidth = Math.min(100, (p.hrProb||0) / 32 * 100);
