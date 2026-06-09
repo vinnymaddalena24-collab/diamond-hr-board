@@ -221,13 +221,6 @@ table.pt th.c{text-align:center}
 .td-prob{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--sub);white-space:nowrap;min-width:52px}
 
 /* Action cell */
-.td-act{padding-right:12px!important;white-space:nowrap}
-.add-btn{background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;padding:4px 10px;border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.5px;transition:all .12s;white-space:nowrap}
-.add-btn:hover{border-color:var(--blue);color:var(--blue)}
-.add-btn.added{border-color:var(--amber);color:var(--amber);background:rgba(245,158,11,.07)}
-.star-btn{background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--muted);padding:3px 4px;transition:color .1s;vertical-align:middle}
-.star-btn:hover{color:var(--amber)}
-.star-btn.on{color:var(--amber)}
 
 /* ── PARLAY SLIP ── */
 .slip{width:260px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:56px;height:calc(100vh - 56px);overflow:hidden}
@@ -328,8 +321,6 @@ table.pt th.c{text-align:center}
 .df-src{display:flex;align-items:center;gap:5px}
 .df-dot{width:5px;height:5px;border-radius:50%;background:var(--green)}
 
-.pm-row{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
-.pm-chip{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;white-space:nowrap}
 
 /* ── INLINE SPRAY EXPAND ── */
 .spray-expand-row td{padding:0!important;border-bottom:2px solid var(--blue)!important}
@@ -344,7 +335,6 @@ table.pt th.c{text-align:center}
 .spray-stat .v{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;display:block}
 .spray-stat .l{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);letter-spacing:1px}
 .spray-hit-list{flex:1;overflow-y:auto;max-height:210px}
-.spray-hit-row{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--dim);font-family:'JetBrains Mono',monospace;font-size:8px}
 .spray-legend{display:flex;gap:10px;flex-wrap:wrap}
 .spray-legend-item{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
 .spray-leg-line{width:16px;height:2px;border-radius:1px;flex-shrink:0}
@@ -897,6 +887,7 @@ async function loadDay(dateObj) {
     const data = await res.json();
     serverTop5    = data.top5 || [];
     serverInjuries= data.injuryList || [];
+    bustPlayersCache();
     activeGames   = (data.games||[]).map(g => ({
       id:g.id, aw:g.away, hm:g.home, time:g.time, venue:g.venue,
       pf:g.parkFactor, isDome:g.isDome,
@@ -966,9 +957,13 @@ function refreshData() {
 // ═══════════════════════════════════════════════════
 // BUILD PLAYERS FROM SERVER DATA
 // ═══════════════════════════════════════════════════
+const _playersCache = new Map();
+function bustPlayersCache() { _playersCache.clear(); }
+
 function buildPlayers(g) {
+  if (_playersCache.has(g.id)) return _playersCache.get(g.id);
   if(!g.serverPlayers||!g.serverPlayers.length) return [];
-  return g.serverPlayers.map(sp => {
+  const result = g.serverPlayers.map(sp => {
     const isAway = sp.team === g.aw;
     const pitcher = isAway ? g.hp : g.ap;
     return {
@@ -997,17 +992,8 @@ function buildPlayers(g) {
       gameId: g.id,
     };
   });
-}
-
-function sortedPlayers(players) {
-  const confirmed = players.filter(p=>p.lineupPos>0).sort((a,b)=>a.lineupPos-b.lineupPos);
-  const projected = players.filter(p=>p.lineupPos<=0);
-  projected.sort((a,b) => {
-    const av = a[sortCol], bv = b[sortCol];
-    if(sortDir==='desc') return (bv||0)-(av||0);
-    return (av||0)-(bv||0);
-  });
-  return {confirmed, projected};
+  _playersCache.set(g.id, result);
+  return result;
 }
 
 // ═══════════════════════════════════════════════════
