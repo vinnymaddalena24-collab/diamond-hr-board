@@ -27,6 +27,7 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 CACHE_TTL    = 900   # 15 minutes — general data
 ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "diamond_history.json")
 API_TIMEOUT  = 10    # seconds — hard cap on all external API calls
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
@@ -1647,6 +1648,91 @@ def get_tier(score):
     return "D"
 
 # ── MAIN DATA ASSEMBLY ────────────────────────────────────────────────────────
+# ── HISTORY / HIT-RATE ────────────────────────────────────────────────────────
+_history_lock = threading.Lock()
+
+def _load_history():
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_history(data):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(data, f)
+
+def log_predictions(date_str, players):
+    """Persist today's scored players so we can grade them tomorrow."""
+    with _history_lock:
+        hist = _load_history()
+        # Only write once per date; don't overwrite an existing entry
+        if date_str not in hist:
+            hist[date_str] = {
+                "players": [
+                    {"name": p["name"], "team": p["team"],
+                     "score": p["score"], "tier": p["tier"]}
+                    for p in players
+                ]
+            }
+            # Keep at most 30 days of predictions
+            if len(hist) > 30:
+                oldest = sorted(hist.keys())[0]
+                del hist[oldest]
+            _save_history(hist)
+
+def fetch_yesterday_hr_results(date_str):
+    """Return {player_name: True} for every batter who hit an HR on date_str."""
+    cached = cache_get(f"hr_results_{date_str}", ttl=3600)
+    if cached is not None:
+        return cached
+    try:
+        url = (f"https://statsapi.mlb.com/api/v1/schedule"
+               f"?sportId=1&date={date_str}&hydrate=boxscore&gameType=R")
+        data = fetch(url)
+        hr_hitters = {}
+        for d in data.get("dates", []):
+            for game in d.get("games", []):
+                bs = game.get("liveData", {}).get("boxscore", {})
+                for side in ("home", "away"):
+                    for pid_str, info in bs.get("teams", {}).get(side, {}).get("players", {}).items():
+                        stats = info.get("stats", {}).get("batting", {})
+                        if stats.get("homeRuns", 0) > 0:
+                            full_name = info.get("person", {}).get("fullName", "")
+                            if full_name:
+                                hr_hitters[full_name] = True
+        cache_set(f"hr_results_{date_str}", hr_hitters)
+        return hr_hitters
+    except Exception:
+        return {}
+
+def calc_hit_rate(date_str):
+    """
+    Grade yesterday's predictions against actual HR results.
+    Returns dict: {tier: {hit, total}, "players": [{name, tier, hit}], "date": ...}
+    """
+    yesterday = (datetime.strptime(date_str, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    with _history_lock:
+        hist = _load_history()
+    entry = hist.get(yesterday)
+    if not entry:
+        return {"date": yesterday, "tiers": {}, "players": [], "hasPredictions": False}
+
+    results = fetch_yesterday_hr_results(yesterday)
+    tiers = {}
+    graded = []
+    for p in entry["players"]:
+        t = p["tier"]
+        hit = p["name"] in results
+        tiers.setdefault(t, {"hit": 0, "total": 0})
+        tiers[t]["total"] += 1
+        if hit:
+            tiers[t]["hit"] += 1
+        graded.append({"name": p["name"], "team": p["team"], "tier": t, "score": p["score"], "hit": hit})
+
+    return {"date": yesterday, "tiers": tiers, "players": graded, "hasPredictions": True}
+
+
 def build_daily_data(date_str):
     cached = cache_get(f"daily_{date_str}")
     if cached: return cached
@@ -1932,6 +2018,8 @@ def build_daily_data(date_str):
     }
 
     cache_set(f"daily_{date_str}", result)
+    # Log today's predictions for tomorrow's hit-rate grading
+    log_predictions(date_str, all_players)
     print(f"[build] Done — {len(games)} games, {len(all_players)} players")
     return result
 
@@ -2079,6 +2167,14 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     traceback.print_exc()
                     self.send_json({"error": str(e)}, 500)
+
+        elif path == "/api/history":
+            date_str = params.get("date", [get_today_str()[0]])[0]
+            try:
+                self.send_json(calc_hit_rate(date_str))
+            except Exception as e:
+                traceback.print_exc()
+                self.send_json({"error": str(e)}, 500)
 
         elif path == "/api/refresh":
             with _cache_lock:
