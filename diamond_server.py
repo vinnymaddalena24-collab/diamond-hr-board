@@ -249,7 +249,7 @@ def fetch(url, timeout=None, headers=None):
                 return fetch(loc, timeout=timeout, headers=headers)
         raise
 
-def fetch_savant(url, timeout=15):
+def fetch_savant(url, timeout=10):
     """Fetch Baseball Savant CSV/JSON with full browser headers to bypass 403."""
     req = Request(url, headers=_SAVANT_HEADERS)
     with urlopen(req, timeout=timeout) as r:
@@ -1171,8 +1171,8 @@ def fetch_batter_spray(batter_id):
     try:
         # Fetch contacts and HRs in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-            f_contacts = ex.submit(fetch_savant, url_contacts, 30)
-            f_hrs      = ex.submit(fetch_savant, url_hrs, 30)
+            f_contacts = ex.submit(fetch_savant, url_contacts, 15)
+            f_hrs      = ex.submit(fetch_savant, url_hrs, 15)
         contacts = _parse(f_contacts.result(), limit=60)
         try:
             hr_events = _parse(f_hrs.result())
@@ -1826,7 +1826,6 @@ def build_daily_data(date_str):
         f_psav     = ex.submit(fetch_pitcher_savant_allowed)
         # New free integrations
         f_ump_live = ex.submit(fetch_ump_zone_live, date_str)
-        f_pp       = ex.submit(fetch_prizepicks_mlb)
         f_sprint   = ex.submit(fetch_sprint_speed)
         f_totals   = ex.submit(fetch_game_totals, date_str)
         # All pitcher stats + logs in parallel
@@ -1859,7 +1858,6 @@ def build_daily_data(date_str):
     bullpen         = safe(f_bullpen)
     pitcher_sav_map = safe(f_psav)
     ump_live        = safe(f_ump_live)
-    prizepicks      = safe(f_pp)
     sprint_speed    = safe(f_sprint)
     game_totals     = safe(f_totals)
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
@@ -1944,7 +1942,6 @@ def build_daily_data(date_str):
             lineup_pos   = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
             bat_stat["bats"] = roster_info.get("bats", "R")
-            pp_data = prizepicks.get(name) or prizepicks.get(_normalize_name(name)) or {}
             # Career batter vs pitcher H2H matchup stats
             opp_pid = opp_pitcher.get("id")
             h2h = h2h_maps.get(opp_pid, {}).get(name, {}) if opp_pid else {}
@@ -2018,8 +2015,6 @@ def build_daily_data(date_str):
                 "hpUmp":            g.get("hpUmp", ""),
                 "umpScore":         ump_score,
                 "gameTotal":        game_total,
-                "ppLine":           pp_data.get("line", None),
-                "ppType":           pp_data.get("type", ""),
                 "sprintSpeed":      sprint_speed.get(name, None),
                 "hrProb":           hr_probability(score),
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
@@ -2141,7 +2136,6 @@ class Handler(BaseHTTPRequestHandler):
                 savant       = fetch_batting_stats_savant()
                 injuries     = fetch_injuries()
                 sprint_map   = fetch_sprint_speed()
-                pp_map       = fetch_prizepicks_mlb()
 
                 q_lower = q.lower()
                 # Substring matches first
@@ -2193,7 +2187,6 @@ class Handler(BaseHTTPRequestHandler):
                         "hrProb":      hr_probability(score),
                         "parkFactor":  home_pf,
                         "sprintSpeed": sprint_map.get(name),
-                        "ppLine":      pp_map.get(name, {}).get("line"),
                         "note":        "Base score: home park, neutral pitcher, calm conditions"
                     })
                 results.sort(key=lambda x: -x["score"])

@@ -142,11 +142,6 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .cbdg.ump{background:var(--surface);border-color:var(--border);color:var(--muted)}
 .cbdg.tmp{background:var(--surface);border-color:var(--border);color:var(--sub)}
 /* PrizePicks badge */
-.pp-badge{display:inline-flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;border:1px solid}
-.pp-badge.normal{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.4);color:#a78bfa}
-.pp-badge.demon{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);color:var(--red)}
-.pp-badge.goblin{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.4);color:var(--green)}
-.pp-value{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);color:var(--green);margin-left:3px;letter-spacing:.5px}
 
 /* ── GAME DETAIL (expanded) ── */
 .gc-detail{border-top:2px solid var(--blue);background:var(--surface)}
@@ -469,7 +464,6 @@ table.pt th.c{text-align:center}
   <button class="ftab" data-tab="platoon">⚡ PLATOON</button>
   <button class="ftab" data-tab="confirmed">✓ CONFIRMED</button>
   <button class="ftab" data-tab="targets" id="targetsTabBtn">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:var(--amber);font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
-  <button class="ftab" data-tab="pp">🟣 PP LINES</button>
   <button class="ftab" data-tab="soon">⏰ NEXT 3H</button>
   <div class="fb-div"></div>
   <button class="ftab" data-tab="search">🔍 LOOKUP</button>
@@ -1115,7 +1109,7 @@ function buildPlayers(g) {
       hotMonth: sp.hotMonth||false, monthHRPct: sp.monthHRPct||0,
       oppBullpenEra: sp.oppBullpenEra||4.50,
       hpUmp: sp.hpUmp||'', umpScore: sp.umpScore||0,
-      gameTotal: sp.gameTotal||0, ppLine: sp.ppLine??null, ppType: sp.ppType||'',
+      gameTotal: sp.gameTotal||0,
       sprintSpeed: sp.sprintSpeed||null, hrProb: sp.hrProb||0,
       h2h: sp.h2h||null,
       pitchMatchup: sp.pitchMatchup || [],
@@ -1221,7 +1215,6 @@ function renderGameCard(g) {
   if(activeTab==='hot')       filtered = filtered.filter(p=>p.hotStreak);
   if(activeTab==='platoon')   filtered = filtered.filter(p=>p.platoon>=8);
   if(activeTab==='confirmed') filtered = filtered.filter(p=>p.confirmed);
-  if(activeTab==='pp')        filtered = filtered.filter(p=>p.ppLine!=null);
   if(activeTab==='targets')   filtered = filtered.filter(p=>targetSet.has(p.name));
   if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
   if(!filtered.length && activeTab!=='all' && activeTab!=='soon') return '';
@@ -1342,17 +1335,6 @@ function renderGameDetail(g, players) {
 // ═══════════════════════════════════════════════════
 // PLAYER ROW
 // ═══════════════════════════════════════════════════
-function ppBadgeHtml(p) {
-  if (p.ppLine == null) return '';
-  const t = (p.ppType||'').toLowerCase();
-  const cls = t.includes('demon') ? 'demon' : t.includes('goblin') ? 'goblin' : 'normal';
-  const icon = cls === 'demon' ? '😈' : cls === 'goblin' ? '👺' : '🟣';
-  const label = `${icon} PP ${p.ppLine}`;
-  // Value: our HR% > 10% is meaningful for a 0.5 HR over
-  const isValue = (p.hrProb||0) >= 10 && p.ppLine <= 0.5;
-  const valueBadge = isValue ? `<span class="pp-value">⬆ VALUE</span>` : '';
-  return `<div style="margin-top:3px">${`<span class="pp-badge ${cls}">${label}</span>`}${valueBadge}</div>`;
-}
 
 function playerRow(p, g) {
   const sel = legs.find(l=>l.name===p.name);
@@ -1428,7 +1410,6 @@ function playerRow(p, g) {
       ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
     </div>
     <div class="p-sub">Bats ${p.bats}${p.hotStreak?' · 🔥 HOT':''}${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}</div>
-    ${ppBadgeHtml(p)}
   </td>
   <td class="td-vs">
     <div class="vs-pitcher">vs ${p.pitcher.n}</div>
@@ -1632,11 +1613,6 @@ function botPlayerPool() {
 function quickBuild(n) {
   const min = gradeMinScore(botGrade);
   let pool = botPlayerPool().filter(p => p.score >= min);
-  // When PP tab is active, limit to players with a PP line (prefer PP players)
-  if (activeTab === 'pp') {
-    const ppPool = pool.filter(p => p.ppLine != null);
-    if (ppPool.length >= n) pool = ppPool;
-  }
   if (pool.length < n) {
     botMsg(`Only ${pool.length} ${botGrade === 'any' ? '' : botGrade + '+ '}players available`, 'warn');
     return;
@@ -1656,8 +1632,7 @@ function quickBuild(n) {
   legs = picks.slice(0, n);
   renderSlip(); render();
   const label = botGrade === 'any' ? 'ANY' : botGrade + '+';
-  const ppLabel = activeTab === 'pp' ? ' PP' : '';
-  botMsg(`✓ ${n}-man${ppLabel} ${label} slip built`);
+  botMsg(`✓ ${n}-man ${label} slip built`);
 }
 
 function botMsg(text, type) {
@@ -1761,8 +1736,7 @@ function copySlip() {
     const t = tierOf(l.score);
     const emoji = tierEmoji[t] || '⚾';
     const hrProb = l.hrProb > 0 ? ` · ${l.hrProb.toFixed(1)}% HR` : '';
-    const ppTxt = l.ppLine != null ? ` | PP ${l.ppLine} ${(l.ppType||'').toLowerCase().includes('demon')?'😈':(l.ppType||'').toLowerCase().includes('goblin')?'👺':'🟣'}` : '';
-    return `${emoji} **${l.name}** (${l.team}) ${tierColor[t]} [${l.score}/99]\n   ↳ vs ${l.pitcher}${hrProb}${ppTxt}`;
+    return `${emoji} **${l.name}** (${l.team}) ${tierColor[t]} [${l.score}/99]\n   ↳ vs ${l.pitcher}${hrProb}`;
   });
   const txt = [
     `⚾ **DIAMOND HR PARLAY** — ${dateStr}`,
@@ -1816,7 +1790,6 @@ function renderSearchCard(p) {
     p.avgEV?`<span class="src-chip">${p.avgEV} EV</span>`:'',
     `<span class="src-chip">${ops3} OPS</span>`,
     p.xwOBA?`<span class="src-chip">${p.xwOBA.toFixed(3)} xwOBA</span>`:'',
-    p.ppLine!=null?`<span class="src-chip" style="color:var(--purple)">PP ${p.ppLine}</span>`:'',
     p.sprintSpeed?`<span class="src-chip">${p.sprintSpeed}ft/s</span>`:'',
   ].filter(Boolean).join('');
   return `<div class="src-card">
