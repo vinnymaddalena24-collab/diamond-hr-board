@@ -15,13 +15,15 @@ Fetches on every page load:
 All data is cached for 15 minutes so rapid refreshes don't re-fetch.
 """
 
-import json, time, threading, traceback, difflib, os, concurrent.futures, socket
+import json, time, threading, traceback, difflib, os, concurrent.futures
 from datetime import datetime, timezone, timedelta
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse, parse_qs
 
-socket.setdefaulttimeout(8)  # global hard cap — no socket op can hang beyond 8s
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────
 PORT = int(os.environ.get("PORT", 8765))
