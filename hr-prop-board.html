@@ -705,6 +705,21 @@ function computeEdges(p, g) {
 let playerMap  = {};
 let sprayCache = {};        // player.name → events array (null = fetching)
 let expandedPlayer = null;  // name of currently expanded player
+let sprayFilter = {};       // player.name → 'all'|'hr'|'xbh'
+
+// [LF, LC, CF, RC, RF] distances per park
+const PARK_WALLS = {
+  NYY:[318,399,408,385,314], BOS:[310,379,420,380,302], CHC:[355,368,400,368,353],
+  SF: [339,382,399,421,309], LAD:[330,385,400,385,330], COL:[347,390,415,375,350],
+  PHI:[329,374,401,369,330], ATL:[335,385,400,390,325], MIA:[344,386,407,392,335],
+  NYM:[335,379,408,383,330], PIT:[325,383,399,375,320], CIN:[328,379,404,370,325],
+  STL:[336,375,400,375,336], MIN:[339,377,404,373,328], DET:[345,370,420,365,330],
+  CLE:[325,370,405,375,325], BAL:[333,364,400,373,318], WSH:[336,377,402,370,335],
+  MIL:[344,370,400,374,345], KC: [330,387,410,387,330], LAA:[330,387,400,365,350],
+  SD: [336,367,396,391,322], ATH:[333,375,400,362,330], ARI:[330,374,407,376,335],
+  CWS:[330,375,400,375,335], TEX:[329,372,407,374,326], TOR:[328,375,400,375,328],
+  SEA:[331,378,401,381,326], TBR:[315,370,404,370,322], HOU:[315,362,409,373,326],
+};
 
 async function fetchSprayData(player) {
   if (!player.mlbId) { sprayCache[player.name] = []; return; }
@@ -716,14 +731,27 @@ async function fetchSprayData(player) {
   } catch(e) { sprayCache[player.name] = []; }
   // Patch the row in-place without full re-render
   const rowEl = document.getElementById(`spray-row-${player.name.replace(/[^a-zA-Z0-9]/g,'_')}`);
-  if (rowEl) rowEl.querySelector('td').innerHTML = buildSprayInner(player, sprayCache[player.name]||[]);
+  if (rowEl) rowEl.querySelector('td').innerHTML = buildSprayInner(player, sprayCache[player.name]||[], null);
 }
 
-function buildSprayInner(player, events) {
+function buildSprayInner(player, events, homeTeam) {
   const photo = player.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${player.mlbId}/headshot/67/current">` : '';
-  const hrs  = events.filter(e=>e.event==='home_run').length;
-  const hits = events.filter(e=>['single','double','triple'].includes(e.event)).length;
-  const outs = events.filter(e=>!['home_run','single','double','triple'].includes(e.event)).length;
+  const activeF = sprayFilter[player.name] || 'all';
+  const XBH_TYPES = ['home_run','double','triple'];
+  const HIT_TYPES = ['home_run','single','double','triple'];
+  // Filter events for the SVG — always show all for context; apply for hit list
+  const allHrs  = events.filter(e=>e.event==='home_run').length;
+  const allHits = events.filter(e=>['single','double','triple'].includes(e.event)).length;
+  const allOuts = events.filter(e=>!HIT_TYPES.includes(e.event)).length;
+  // For the field SVG, dim non-matching events when filter is active
+  const svgEvents = events.map(e => ({...e, dimmed: activeF==='hr' ? e.event!=='home_run' : activeF==='xbh' ? !XBH_TYPES.includes(e.event) : false}));
+  // Hit list filtered events
+  const listEvents = activeF==='hr' ? events.filter(e=>e.event==='home_run')
+                   : activeF==='xbh' ? events.filter(e=>XBH_TYPES.includes(e.event))
+                   : events.filter(e=>HIT_TYPES.includes(e.event));
+  const hrs  = allHrs;
+  const hits = allHits;
+  const outs = allOuts;
   const hitList = events.filter(e=>['home_run','single','double','triple'].includes(e.event));
   const sc = (v,hi,lo) => v>=hi?'var(--green)':v>=lo?'var(--amber)':'var(--sub)';
   const stats = player.barrel>0 ? `
@@ -765,14 +793,38 @@ function buildSprayInner(player, events) {
     </div>`;
   }).join('') : `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);padding:10px 0;text-align:center">No pitch arsenal data available</div>`;
 
+  // Filter tabs
+  const pn = player.name;
+  const filterBar = `<div style="display:flex;gap:4px;margin-bottom:8px">
+    ${[['all','ALL'],['hr','HRs ONLY'],['xbh','XBH']].map(([val,lbl])=>`<button onclick="setSprayFilter('${pn.replace(/'/g,"\\'")}','${val}')" style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid ${activeF===val?'var(--blue)':'var(--border)'};background:${activeF===val?'rgba(96,165,250,.15)':'transparent'};color:${activeF===val?'var(--blue)':'var(--muted)'}">${lbl}</button>`).join('')}
+  </div>`;
+
+  // Hit list
+  const evColor = e => e.event==='home_run'?'#F59E0B':e.event==='double'||e.event==='triple'?'#60A5FA':e.event==='single'?'#34D399':'#4a5568';
+  const evLabel = e => e.event==='home_run'?'HR':e.event==='double'?'2B':e.event==='triple'?'3B':e.event==='single'?'1B':e.event.replace(/_/g,' ').toUpperCase();
+  const hitListHtml = listEvents.length === 0
+    ? `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);padding:10px 0;text-align:center">No ${activeF==='hr'?'home runs':activeF==='xbh'?'extra-base hits':'hits'} found</div>`
+    : listEvents.slice(0,20).map(e=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--dim)">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:${evColor(e)}22;color:${evColor(e)};border:1px solid ${evColor(e)}44;white-space:nowrap;min-width:22px;text-align:center">${evLabel(e)}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.pitcher||'—'}</span>
+        ${e.ev>0?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:${e.ev>=100?'var(--green)':e.ev>=92?'var(--amber)':'var(--sub)'}">${e.ev.toFixed(0)}<span style="opacity:.5">mph</span></span>`:''}
+        ${e.la!==0?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)">${e.la>0?'+':''}${e.la}°</span>`:''}
+        ${e.dist>0?`<span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)">${e.dist}ft</span>`:''}
+        <span style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--dim);white-space:nowrap">${(e.date||'').slice(5)}</span>
+      </div>`).join('');
+
   return `<div class="spray-wrap">
     <div class="spray-field-col">
-      ${fieldSVG(events)}
+      ${filterBar}
+      ${fieldSVG(svgEvents, homeTeam)}
       <div class="spray-legend" style="margin-top:8px">
-        <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);width:100%;margin-bottom:4px;letter-spacing:1px">LAST ${events.length} CONTACTS</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);width:100%;margin-bottom:4px;letter-spacing:1px">${events.length} CONTACTS · ${hrs} HR THIS SEASON</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#F59E0B"></div>${hrs} HR</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#60A5FA"></div>${hits} Hits</div>
         <div class="spray-legend-item"><div class="spray-leg-line" style="background:#475569;opacity:.5"></div>${outs} Outs</div>
+      </div>
+      <div class="spray-hit-list" style="max-height:160px;overflow-y:auto;margin-top:8px">
+        ${hitListHtml}
       </div>
     </div>
     <div class="spray-info-col">
@@ -801,27 +853,51 @@ function buildSprayInner(player, events) {
 function buildSprayRow(player) {
   const safeName = player.name.replace(/[^a-zA-Z0-9]/g,'_');
   const events = sprayCache[player.name];
-  const inner = events === undefined || events === null
-    ? `<div class="spray-wrap"><div style="padding:24px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:10px"><span class="spinner"></span>LOADING STATCAST DATA...</div></div>`
-    : buildSprayInner(player, events);
+  // Find home team for this game (for park-specific wall distances)
+  const game = activeGames.find(g => g.id === player.gameId);
+  const homeTeam = game ? game.hm : '';
+  let inner;
+  if (events === undefined || events === null) {
+    inner = `<div class="spray-wrap"><div style="padding:24px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);display:flex;align-items:center;gap:10px"><span class="spinner"></span>LOADING STATCAST DATA...</div></div>`;
+  } else if (events.length === 0) {
+    inner = `<div class="spray-wrap"><div style="padding:24px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);text-align:center;width:100%">⚾ No Statcast data available for ${player.name} this season</div></div>`;
+  } else {
+    inner = buildSprayInner(player, events, homeTeam);
+  }
   return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="9">${inner}</td></tr>`;
 }
 
-function fieldSVG(events) {
+function setSprayFilter(playerName, f) {
+  sprayFilter[playerName] = f;
+  const safeName = playerName.replace(/[^a-zA-Z0-9]/g,'_');
+  const rowEl = document.getElementById(`spray-row-${safeName}`);
+  if (!rowEl) return;
+  const player = playerMap[playerName];
+  const events = sprayCache[playerName] || [];
+  const game = activeGames.find(g => g.id === player?.gameId);
+  if (player) rowEl.querySelector('td').innerHTML = buildSprayInner(player, events, game ? game.hm : '');
+}
+
+function fieldSVG(events, homeTeam) {
   const W=310, H=268, HX=155, HY=248;
   function sc(x,y){ return [(x/250)*310, (y/250)*268]; }
+  // Park-specific wall distances
+  const w = PARK_WALLS[homeTeam] || [330,365,400,365,330];
+  const [dLF,dLC,dCF,dRC,dRF] = w;
   const lines = events.map(ev=>{
     if(!ev.x||!ev.y) return '';
     const [ex,ey]=sc(ev.x,ev.y);
     const isHR=ev.event==='home_run', is2=ev.event==='double', is3=ev.event==='triple', is1=ev.event==='single';
     const isHit=isHR||is2||is3||is1;
     const color=isHR?'#F59E0B':is2||is3?'#60A5FA':is1?'#34D399':'#4a5568';
-    const sw=isHR?3:is2||is3?2.2:is1?1.8:1, op=isHit?'0.85':'0.15';
+    const dimmed = ev.dimmed || false;
+    const sw=isHR?3:is2||is3?2.2:is1?1.8:1;
+    const op=dimmed?'0.06':isHit?'0.85':'0.15';
     const dash=isHit?'':'stroke-dasharray="3 2"';
-    const tip=`${ev.event||'out'}${ev.ev?' '+ev.ev+'mph':''}${ev.la?' '+ev.la+'°':''}${ev.date?' '+ev.date:''}`;
+    const tip=`${ev.event||'out'}${ev.ev?' '+ev.ev+'mph':''}${ev.la?' '+ev.la+'°':''}${ev.dist?' '+ev.dist+'ft':''}${ev.date?' '+ev.date:''}`;
     let ex2=ex,ey2=ey,mark='';
-    if(isHR){const dx=ex-HX,dy=ey-HY;ex2=ex+dx*.30;ey2=ey+dy*.30;mark=`<circle cx="${ex2.toFixed(1)}" cy="${ey2.toFixed(1)}" r="6" fill="#F59E0B" opacity=".92" filter="url(#fg)"/><circle cx="${ex2.toFixed(1)}" cy="${ey2.toFixed(1)}" r="11" fill="none" stroke="#F59E0B" stroke-width="1.5" opacity=".30"/>`;}
-    else if(isHit){mark=`<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="${is2||is3?4:3}" fill="${color}" opacity=".82"/>`;}
+    if(isHR){const dx=ex-HX,dy=ey-HY;ex2=ex+dx*.30;ey2=ey+dy*.30;mark=dimmed?'':(`<circle cx="${ex2.toFixed(1)}" cy="${ey2.toFixed(1)}" r="6" fill="#F59E0B" opacity=".92" filter="url(#fg)"/><circle cx="${ex2.toFixed(1)}" cy="${ey2.toFixed(1)}" r="11" fill="none" stroke="#F59E0B" stroke-width="1.5" opacity=".30"/>`);}
+    else if(isHit&&!dimmed){mark=`<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="${is2||is3?4:3}" fill="${color}" opacity=".82"/>`;}
     return `<g><line x1="${HX}" y1="${HY}" x2="${ex2.toFixed(1)}" y2="${ey2.toFixed(1)}" stroke="${color}" stroke-width="${sw}" opacity="${op}" ${dash}><title>${tip}</title></line>${mark}</g>`;
   }).join('');
 
@@ -854,12 +930,12 @@ function fieldSVG(events) {
 <line x1="${HX}" y1="${HY}" x2="8" y2="46" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>
 <line x1="${HX}" y1="${HY}" x2="302" y2="46" stroke="rgba(255,255,255,.55)" stroke-width="1.5"/>
 <!-- Distance markers -->
-<text x="46" y="90" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">330</text>
-<text x="${HX}" y="28" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">400</text>
-<text x="264" y="90" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">330</text>
+<text x="46" y="90" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">${dLF}</text>
+<text x="${HX}" y="28" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">${dCF}</text>
+<text x="264" y="90" fill="rgba(255,255,255,.25)" font-family="monospace" font-size="9" text-anchor="middle">${dRF}</text>
 <!-- Power alley markers -->
-<text x="80" y="52" fill="rgba(255,255,255,.18)" font-family="monospace" font-size="8" text-anchor="middle">365</text>
-<text x="230" y="52" fill="rgba(255,255,255,.18)" font-family="monospace" font-size="8" text-anchor="middle">365</text>
+<text x="80" y="52" fill="rgba(255,255,255,.18)" font-family="monospace" font-size="8" text-anchor="middle">${dLC}</text>
+<text x="230" y="52" fill="rgba(255,255,255,.18)" font-family="monospace" font-size="8" text-anchor="middle">${dRC}</text>
 <!-- Infield dirt -->
 <circle cx="${HX}" cy="182" r="76" fill="url(#dirtG)"/>
 <!-- Infield grass -->

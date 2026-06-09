@@ -1102,36 +1102,33 @@ def fetch_pitcher_arsenal():
 
 
 def fetch_batter_spray(batter_id):
-    """Last 25 in-play batted-ball events with Statcast hc_x/hc_y coordinates."""
+    """Last 60 in-play contacts + all-season HRs for a batter (Statcast)."""
     if not batter_id: return []
     cached = cache_get(f"spray_{batter_id}", ttl=SPLITS_TTL)
-    if cached: return cached
+    if cached is not None: return cached
     import csv as _csv, io as _io
-    url = (
+
+    base = (
         "https://baseballsavant.mlb.com/statcast_search/csv"
         "?all=true&hfSea=2026%7C&player_type=batter"
         f"&batters_lookup%5B%5D={batter_id}"
         "&type=details&sort_col=game_date&sort_order=desc"
-        "&min_pitches=0&min_results=0&min_pas=0"
-        "&hfGT=R%7C"  # regular season only (no flag filter — we filter below)
+        "&min_pitches=0&min_results=0&min_pas=0&hfGT=R%7C"
     )
-    try:
-        raw = fetch_savant(url, timeout=25)
-        # Strip BOM and parse with csv.DictReader so embedded commas are handled
+    url_contacts = base  # last 60 in-play contacts
+    url_hrs      = base + "&hfAB=home_run%7C"  # all-season HRs (no row cap)
+
+    def _parse(raw, limit=None):
         raw = raw.lstrip("﻿")
         reader = _csv.DictReader(_io.StringIO(raw))
-        results = []
-        IN_PLAY = {"home_run","single","double","triple","field_out",
-                   "grounded_into_double_play","double_play","force_out",
-                   "sac_fly","sac_bunt","field_error","fielders_choice","caught_stealing_2b"}
+        out = []
         for row in reader:
             event = row.get("events","").strip()
             if not event: continue
             hc_x = _safe_float(row.get("hc_x"))
             hc_y = _safe_float(row.get("hc_y"))
-            # Skip rows without valid hit coordinates
             if hc_x < 1 or hc_y < 1: continue
-            results.append({
+            out.append({
                 "x":      round(hc_x, 1),
                 "y":      round(hc_y, 1),
                 "event":  event,
@@ -1140,12 +1137,37 @@ def fetch_batter_spray(batter_id):
                 "date":   row.get("game_date","").strip(),
                 "ev":     _safe_float(row.get("launch_speed")),
                 "la":     round(_safe_float(row.get("launch_angle")), 1),
+                "dist":   round(_safe_float(row.get("hit_distance_sc"))),
                 "bb":     row.get("bb_type","").strip(),
             })
-            if len(results) >= 5: break   # last 5 contacts only
-        cache_set(f"spray_{batter_id}", results)
-        print(f"[spray] batter {batter_id}: {len(results)} events")
-        return results
+            if limit and len(out) >= limit:
+                break
+        return out
+
+    try:
+        # Fetch contacts and HRs in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_contacts = ex.submit(fetch_savant, url_contacts, 30)
+            f_hrs      = ex.submit(fetch_savant, url_hrs, 30)
+        contacts = _parse(f_contacts.result(), limit=60)
+        try:
+            hr_events = _parse(f_hrs.result())
+        except Exception:
+            hr_events = []
+
+        # Merge: add any season HRs not already in contacts (dedupe by date+pitcher)
+        contact_keys = {(e["date"], e["pitcher"]) for e in contacts}
+        for hr in hr_events:
+            k = (hr["date"], hr["pitcher"])
+            if k not in contact_keys:
+                contacts.append(hr)
+                contact_keys.add(k)
+
+        # Sort merged list by date descending
+        contacts.sort(key=lambda e: e["date"], reverse=True)
+        cache_set(f"spray_{batter_id}", contacts)
+        print(f"[spray] batter {batter_id}: {len(contacts)} events ({sum(1 for e in contacts if e['event']=='home_run')} HR)")
+        return contacts
     except Exception as e:
         print(f"[spray {batter_id}] Error: {e}")
         return []
