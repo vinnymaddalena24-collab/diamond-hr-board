@@ -222,6 +222,8 @@ TEAM_MAP = {
 # ── IN-MEMORY CACHE ──────────────────────────────────────────────────────────
 _cache = {}
 _cache_lock = threading.Lock()
+_building = set()          # date strings currently being built
+_building_lock = threading.Lock()
 
 def cache_get(key, ttl=None):
     with _cache_lock:
@@ -964,8 +966,8 @@ def fetch_ump_zone_live(date_str):
     if cached: return cached
     result = {}
     for url in [
-        f"https://umpscorecards.com/api/games/?date={date_str}",
-        "https://umpscorecards.com/api/umpires/",
+        f"https://umpscorecards.com/api/games?date={date_str}",
+        "https://umpscorecards.com/api/umpires",
     ]:
         try:
             data = fetch(url)
@@ -1780,6 +1782,22 @@ def build_daily_data(date_str):
     cached = cache_get(f"daily_{date_str}")
     if cached: return cached
 
+    # Only one build per date at a time — extra callers bail out immediately
+    with _building_lock:
+        if date_str in _building:
+            return None
+        _building.add(date_str)
+
+    try:
+        return _do_build(date_str)
+    except Exception:
+        traceback.print_exc()
+        return None
+    finally:
+        with _building_lock:
+            _building.discard(date_str)
+
+def _do_build(date_str):
     _t0 = time.time()
     def _lap(label):
         print(f"[build] {label} +{round(time.time()-_t0,1)}s")
