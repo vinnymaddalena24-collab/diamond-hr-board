@@ -81,32 +81,36 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 
 /* ── LAYOUT ── */
 .layout{display:flex;min-height:calc(100vh - 56px)}
-.main-col{flex:1;min-width:0;padding:18px 20px}
-.games-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.main-col{flex:1;min-width:0;padding:14px 20px}
+.games-grid{display:flex;flex-direction:column;gap:10px;max-width:960px}
 
 /* ── GAME CARD ── */
 .game-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s}
 .game-card:hover{border-color:var(--border2)}
 .game-card.expanded{border-color:var(--blue)}
-.gc-head{padding:14px 16px 10px;cursor:pointer;user-select:none}
-.gc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:8px}
-.gc-matchup{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;letter-spacing:1px}
+.gc-head{padding:12px 16px 10px;cursor:pointer;user-select:none}
+/* Row 1: matchup + conditions + toggle */
+.gc-hdr1{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.gc-hdr-left{flex-shrink:0}
+.gc-matchup{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;letter-spacing:1px}
 .gc-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub);margin-top:2px}
+.gc-hdr-conds{display:flex;gap:4px;flex-wrap:wrap;flex:1;align-items:center}
+.gc-toggle{flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--blue);white-space:nowrap;display:flex;align-items:center;gap:6px}
 .gc-live{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.3);flex-shrink:0}
-/* Pitcher row */
-.gc-pitchers-row{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
-.gc-pp{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 9px;flex:1;min-width:130px}
+/* Row 2: pitcher pills */
+.gc-pitchers-row{display:flex;gap:6px;flex-wrap:nowrap}
+.gc-pp{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;flex:1}
 .gc-pp.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.04)}
 .gc-pp.elite{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.04)}
 .pp-tm{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:var(--muted);width:24px;flex-shrink:0}
-.pp-nm{font-size:11px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pp-era{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;flex-shrink:0}
+.pp-nm{font-size:12px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-era{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0}
 .pp-era.danger{color:var(--red)} .pp-era.elite{color:var(--green)} .pp-era.mid{color:var(--amber)}
+.pp-vel{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub);flex-shrink:0}
 .pp-hand{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);flex-shrink:0}
 .pp-dots{display:flex;gap:2px;flex-shrink:0}
 .pp-dot{width:6px;height:6px;border-radius:50%}
 /* Condition badges */
-.gc-conds{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:9px}
 .cbdg{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:4px;border:1px solid transparent}
 .cbdg.wo{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.3);color:var(--amber)}
 .cbdg.wi{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:var(--blue)}
@@ -117,25 +121,9 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .cbdg.tot{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple)}
 .cbdg.ump{background:var(--surface);border-color:var(--border);color:var(--muted)}
 .cbdg.tmp{background:var(--surface);border-color:var(--border);color:var(--sub)}
-/* Mini picks */
-.gc-picks-row{display:flex;gap:7px}
-.gc-mini{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;min-width:0}
-.gc-mini-photo{width:32px;height:32px;border-radius:50%;background:var(--card);flex-shrink:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:13px;border:1.5px solid var(--border)}
-.gc-mini-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
-.gc-mini-info{flex:1;min-width:0}
-.gc-mini-name{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gc-mini-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:1px}
-.gc-mini-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;line-height:1;flex-shrink:0}
-.gc-footer{display:flex;align-items:center;justify-content:space-between;padding:0;border-top:1px solid var(--border);cursor:pointer;user-select:none;transition:background .12s}
-.gc-footer:hover{background:rgba(59,130,246,.06)}
-.gc-footer-btn{width:100%;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--blue);transition:color .12s}
-.gc-footer:hover .gc-footer-btn{color:#60a5fa}
-.gc-chev{transition:transform .2s;font-size:11px}
-.gc-chev.open{transform:rotate(180deg)}
 
 /* ── GAME DETAIL (expanded) ── */
 .gc-detail{border-top:2px solid var(--blue);background:var(--surface)}
-.gcd-conditions{display:flex;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.4);align-items:center}
 .gcd-pitcher-strip{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .pitcher-detail-card{flex:1;min-width:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
 .pitcher-detail-card.danger{border-color:rgba(239,68,68,.3)} .pitcher-detail-card.elite{border-color:rgba(16,185,129,.3)}
@@ -340,7 +328,7 @@ table.pt th.c{text-align:center}
 @media(max-width:900px){.slip{display:none}}
 @media(max-width:680px){
   .main-col{padding:12px}
-  .games-grid{grid-template-columns:1fr}
+  .games-grid{max-width:100%}
   .picks-strip{padding:10px 12px}
   .filter-bar{padding:6px 12px}
   .hdr{padding:0 12px;gap:8px}
@@ -961,31 +949,19 @@ function condBadges(g) {
 
 function pitcherPill(pitcher, teamAbbr) {
   const ec = eraClass(pitcher.era);
+  const vel = (pitcher.vel && pitcher.vel !== 92.5) ? `${pitcher.vel}mph` : '';
   return `<div class="gc-pp ${ec}">
     <span class="pp-tm">${teamAbbr}</span>
     <span class="pp-nm">${pitcher.n}</span>
     <span class="pp-era ${ec}">${pitcher.era.toFixed(2)}</span>
+    ${vel ? `<span class="pp-vel">${vel}</span>` : ''}
     <span class="pp-hand">${pitcher.h}HP</span>
     <span class="pp-dots">${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued, pitcher.starts)}</span>
   </div>`;
 }
 
-function miniPickHtml(p, g) {
-  const c = scoreColor(p.tier);
-  const photo = p.mlbId ? `<img src="https://img.mlb.com/headshot/retro/67x50/${p.mlbId}.jpg" alt="" onerror="this.style.display='none'">` : '';
-  const badge = p.lineupPos > 0 ? ` · #${p.lineupPos}` : (p.hotStreak?' · 🔥':'');
-  return `<div class="gc-mini">
-    <div class="gc-mini-photo">⚾${photo}</div>
-    <div class="gc-mini-info">
-      <div class="gc-mini-name">${p.name.split(' ').slice(-1)[0]}</div>
-      <div class="gc-mini-sub">${p.team}${badge}</div>
-    </div>
-    <div class="gc-mini-score" style="color:${c}">${p.score}</div>
-  </div>`;
-}
 
 function renderGameCard(g) {
-  // Time filter: hide entire game if outside 3-hour window
   if(activeTab==='soon' && !gameStartsWithin3Hours(g)) return '';
 
   const allPlayers = buildPlayers(g);
@@ -999,31 +975,26 @@ function renderGameCard(g) {
   if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
   if(!filtered.length && activeTab!=='all' && activeTab!=='soon') return '';
 
-  const topPicks = allPlayers.sort((a,b)=>b.score-a.score).slice(0,2);
   const isExp = expandedGames.has(g.id);
   const wx = activeWX[g.id]||{};
+  const arrow = isExp ? '▲' : '▼';
 
   return `<div class="game-card${isExp?' expanded':''}" id="gc-${g.id}">
     <div class="gc-head" onclick="toggleGame('${g.id}')">
-      <div class="gc-top">
-        <div>
+      <div class="gc-hdr1">
+        <div class="gc-hdr-left">
           <div class="gc-matchup">${g.aw} <span style="color:var(--muted)">@</span> ${g.hm}</div>
           <div class="gc-meta">${g.time} · ${g.venue}</div>
         </div>
-        ${wx.dome?'<span class="gc-live">DOME</span>':''}
+        <div class="gc-hdr-conds">${condBadges(g)}</div>
+        <div class="gc-toggle">
+          ${wx.dome?'<span class="gc-live">DOME</span>':''}
+          <span>${arrow} ${isExp ? 'HIDE' : allPlayers.length + ' PLAYERS'}</span>
+        </div>
       </div>
       <div class="gc-pitchers-row">
         ${pitcherPill(g.ap, g.aw)}
         ${pitcherPill(g.hp, g.hm)}
-      </div>
-      <div class="gc-conds">${condBadges(g)}</div>
-      <div class="gc-picks-row">${topPicks.map(p=>miniPickHtml(p,g)).join('')}</div>
-    </div>
-    <div class="gc-footer" onclick="toggleGame('${g.id}')">
-      <div class="gc-footer-btn">
-        <span class="gc-chev${isExp?' open':''}">▼</span>
-        ${isExp ? `HIDE PLAYERS` : `SHOW ${allPlayers.length} PLAYERS`}
-        <span class="gc-chev${isExp?' open':''}">▼</span>
       </div>
     </div>
     ${isExp ? renderGameDetail(g, filtered) : ''}
@@ -1035,6 +1006,7 @@ function renderGameCard(g) {
 // ═══════════════════════════════════════════════════
 function pitcherDetailCard(pitcher, teamAbbr) {
   const ec = eraClass(pitcher.era);
+  const vel = pitcher.vel && pitcher.vel !== 92.5 ? pitcher.vel : null;
   return `<div class="pitcher-detail-card ${ec}">
     <div class="pdc-team">${teamAbbr}</div>
     <div class="pdc-name">${pitcher.n} <span class="pdc-hand">${pitcher.h}HP</span></div>
@@ -1042,6 +1014,7 @@ function pitcherDetailCard(pitcher, teamAbbr) {
       <div class="pdc-stat"><span class="lbl">ERA</span><span class="val ${ec}">${pitcher.era.toFixed(2)}</span></div>
       <div class="pdc-stat"><span class="lbl">REC.ERA</span><span class="val ${eraClass(pitcher.recentEra)}">${pitcher.recentEra.toFixed(2)}</span></div>
       <div class="pdc-stat"><span class="lbl">FB%</span><span class="val">${pitcher.fb||38}%</span></div>
+      ${vel?`<div class="pdc-stat"><span class="lbl">VEL</span><span class="val">${vel}mph</span></div>`:''}
     </div>
     <div class="pdc-form">
       <span class="pdc-form-lbl">L5:</span>
@@ -1082,15 +1055,12 @@ function renderGameDetail(g, players) {
     tableRows += projected.map(p=>playerRow(p,g)).join('');
   }
 
+  const umpBadge = umpName ? `<span class="cbdg ump" style="align-self:center">⚖ ${umpName}</span>` : '';
   return `<div class="gc-detail">
-    <div class="gcd-conditions">
-      ${condBadges(g)}
-      ${umpName?`<span class="cbdg ump" style="margin-left:auto">⚖ ${umpName}</span>`:''}
-      <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-left:auto;">${wx.n||''}</span>
-    </div>
     <div class="gcd-pitcher-strip">
       ${pitcherDetailCard(g.ap, g.aw)}
       ${pitcherDetailCard(g.hp, g.hm)}
+      ${umpBadge}
     </div>
     <div class="pt-wrap">
       <table class="pt">
