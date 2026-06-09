@@ -989,6 +989,13 @@ def fetch_ump_zone_live(date_str):
         print(f"[umpscorecards] {len(result)} ump scores")
     return result
 
+def _normalize_name(n):
+    """Lowercase, strip accents, collapse whitespace — for fuzzy name matching."""
+    import unicodedata
+    n = unicodedata.normalize("NFD", n)
+    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+    return " ".join(n.lower().split())
+
 def fetch_prizepicks_mlb():
     """PrizePicks MLB HR prop lines — displayed on player cards."""
     cached = cache_get("prizepicks", ttl=1800)
@@ -1003,17 +1010,34 @@ def fetch_prizepicks_mlb():
         })
         with urlopen(req, timeout=API_TIMEOUT) as r:
             data = json.loads(r.read().decode())
-        result = {}
+
+        stat_types_seen = set()
+        raw = {}  # normalized_name → {line, type, original_name}
         for proj in data.get("data", []):
             attrs     = proj.get("attributes", {})
-            stat_type = attrs.get("stat_type", "")
-            if stat_type in ("Home Runs", "HR", "Home Runs (SGP)"):
+            stat_type = attrs.get("stat_type", "").strip()
+            stat_types_seen.add(stat_type)
+            if stat_type.lower() in ("home runs", "hr", "home runs (sgp)"):
                 name = (attrs.get("name") or attrs.get("player_name") or "").strip()
                 line = attrs.get("line_score")
                 if name and line is not None:
-                    result[name] = {"line": float(line), "type": attrs.get("odds_type", "")}
+                    raw[_normalize_name(name)] = {
+                        "line": float(line),
+                        "type": attrs.get("odds_type", ""),
+                        "_name": name,
+                    }
+
+        print(f"[prizepicks] stat types seen: {sorted(stat_types_seen)}")
+        print(f"[prizepicks] {len(raw)} HR props (raw)")
+
+        # Build result keyed by original PP name AND normalized form
+        # so roster name lookup can hit either way
+        result = {}
+        for norm, v in raw.items():
+            result[v["_name"]] = {"line": v["line"], "type": v["type"]}
+            result[norm]       = {"line": v["line"], "type": v["type"]}
+
         cache_set("prizepicks", result)
-        print(f"[prizepicks] {len(result)} HR props")
         return result
     except Exception as e:
         print(f"[prizepicks] Error: {e}")
@@ -1920,7 +1944,7 @@ def build_daily_data(date_str):
             lineup_pos   = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
             bat_stat["bats"] = roster_info.get("bats", "R")
-            pp_data = prizepicks.get(name, {})
+            pp_data = prizepicks.get(name) or prizepicks.get(_normalize_name(name)) or {}
             # Career batter vs pitcher H2H matchup stats
             opp_pid = opp_pitcher.get("id")
             h2h = h2h_maps.get(opp_pid, {}).get(name, {}) if opp_pid else {}

@@ -54,15 +54,19 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .dbtn.today{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.45);color:var(--blue);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;width:auto;padding:0 9px;letter-spacing:1px}
 
 /* ── TOP PICKS STRIP ── */
-.picks-strip{border-bottom:1px solid var(--border);padding:12px 20px;background:var(--surface)}
-.picks-hd{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.picks-hd-label{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;white-space:nowrap}
-.picks-hd-line{flex:1;height:1px;background:var(--border)}
-.picks-row{display:flex;gap:10px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
-.picks-row::-webkit-scrollbar{display:none}
-.pick-card{flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;min-width:220px;cursor:pointer;transition:all .15s}
-.pick-card:hover{border-color:var(--border2);transform:translateY(-1px)}
-.pick-card.rank1{border-color:rgba(245,158,11,.4);background:linear-gradient(135deg,rgba(245,158,11,.04),transparent)}
+.picks-strip{border-bottom:1px solid var(--border);background:var(--surface);overflow:hidden;display:flex;align-items:center;height:52px;position:relative}
+.picks-strip-label{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);white-space:nowrap;padding:0 14px;border-right:1px solid var(--border);height:100%;display:flex;align-items:center;background:var(--surface);z-index:2;flex-shrink:0}
+.picks-ticker-wrap{flex:1;overflow:hidden;position:relative}
+.picks-ticker-wrap::before,.picks-ticker-wrap::after{content:'';position:absolute;top:0;bottom:0;width:40px;z-index:3;pointer-events:none}
+.picks-ticker-wrap::before{left:0;background:linear-gradient(to right,var(--surface),transparent)}
+.picks-ticker-wrap::after{right:0;background:linear-gradient(to left,var(--surface),transparent)}
+.picks-row{display:flex;gap:0;width:max-content;animation:ticker 32s linear infinite}
+.picks-row:hover{animation-play-state:paused}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.picks-hd{display:none}
+.pick-card{flex-shrink:0;background:transparent;border-left:1px solid var(--border);padding:0 18px;display:flex;align-items:center;gap:10px;height:52px;cursor:pointer;transition:background .15s;white-space:nowrap}
+.pick-card:hover{background:rgba(255,255,255,.03)}
+.pick-card.rank1{border-left-color:rgba(245,158,11,.5)}
 .pick-photo{width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface);flex-shrink:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:18px}
 .pick-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
 .pick-info{flex:1;min-width:0}
@@ -450,12 +454,10 @@ table.pt th.c{text-align:center}
 
 <!-- TOP PICKS STRIP -->
 <div class="picks-strip" id="picksStrip" style="display:none">
-  <div class="picks-hd">
-    <span class="picks-hd-label">⬥ Top 5 HR Projections</span>
-    <div class="picks-hd-line"></div>
-    <span id="picksDate" style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap"></span>
+  <div class="picks-strip-label">⬥ TOP HR</div>
+  <div class="picks-ticker-wrap">
+    <div class="picks-row" id="picksRow"></div>
   </div>
-  <div class="picks-row" id="picksRow"></div>
 </div>
 
 <!-- FILTER BAR -->
@@ -1134,24 +1136,25 @@ function buildPlayers(g) {
 function renderPicks() {
   if(!serverTop5.length){ document.getElementById('picksStrip').style.display='none'; return; }
   document.getElementById('picksStrip').style.display = '';
-  const labels = ['#1 PICK','#2','#3','#4','#5'];
-  document.getElementById('picksRow').innerHTML = serverTop5.map((p,i)=>{
+  const tierColor = {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--muted)'};
+  const card = (p,i) => {
     const t = p.tier||tierOf(p.score||0);
-    const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
-    return `<div class="pick-card c${t}${i===0?' rank1':''}" onclick="scrollToGame('${p.gameId||''}')">
-      <div class="pick-photo">⚾${photo}</div>
-      <div class="pick-info">
-        <div class="pick-rank${i===0?' gold':''}">${labels[i]}</div>
-        <div class="pick-name">${p.name}</div>
-        <div class="pick-sub">${p.team} · ${p.pos||''} · vs ${p.pitcher||'TBD'}</div>
+    const color = tierColor[t]||'var(--sub)';
+    const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current" style="width:32px;height:32px;border-radius:50%;object-fit:cover;object-position:top center;border:2px solid ${color}40;flex-shrink:0">` : `<span style="font-size:20px">⚾</span>`;
+    return `<div class="pick-card${i===0?' rank1':''}" onclick="scrollToGame('${p.gameId||''}')" title="${p.name} — ${p.score}/99 ${t}-TIER · ${p.hrProb||0}% HR">
+      ${photo}
+      <div>
+        <div style="font-weight:700;font-size:13px;color:var(--text)">${p.name}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub)">${p.team} · vs ${(p.pitcher||'TBD').split(' ').pop()}</div>
       </div>
-      <div class="pick-score-wrap">
-        <div class="pick-score">${p.score}</div>
-        <div class="pick-tier-lbl">${t}</div>
-        <div class="pick-prob">${p.hrProb||''}${p.hrProb?'%':''}</div>
-      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${color};margin-left:6px">${p.score}</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;color:${color};margin-left:2px;align-self:flex-end;padding-bottom:3px">${t}</div>
+      ${p.hrProb?`<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-left:4px">${p.hrProb}%</div>`:''}
     </div>`;
-  }).join('');
+  };
+  const cards = serverTop5.map((p,i) => card(p,i)).join('');
+  // Duplicate for seamless infinite scroll
+  document.getElementById('picksRow').innerHTML = cards + cards;
 }
 
 // ═══════════════════════════════════════════════════
