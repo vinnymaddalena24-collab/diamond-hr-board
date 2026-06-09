@@ -1221,6 +1221,7 @@ function playerRow(p, g) {
   const bd = p.scoreBreakdown || {};
   const tipItems = [
     bd.platoon && {l: bd.platoon>0?'Platoon adv':'Platoon disadv', v: bd.platoon},
+    bd.recency && {l: bd.recency>0?'Hot streak 🔥':'Cold streak ❄️', v: bd.recency},
     bd.wind    && {l: 'Wind', v: bd.wind},
     bd.park    && {l: `Park (PF ${g.pf||100})`, v: bd.park},
     bd.h2h     && {l: 'H2H matchup', v: bd.h2h},

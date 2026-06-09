@@ -161,6 +161,18 @@ PARK_FACTORS_HAND = {
 # Known domes / retractable roofs (weather excluded when closed)
 DOMES = {"TBR","HOU","MIL","TEX","ARI","TOR","MIA","SEA"}
 
+# Degrees from north that the OUTFIELD CENTER is located for each park.
+# Wind blowing FROM (bearing+180)° heads toward the outfield = "blowing out".
+PARK_OUTFIELD_BEARING = {
+    "NYY": 205, "BOS":  95, "CHC": 130, "SF":   25, "LAD": 170,
+    "COL": 110, "PHI": 180, "ATL": 250, "MIA": 350, "NYM": 175,
+    "PIT":  90, "CIN": 135, "STL": 225, "MIN": 200, "DET": 220,
+    "CLE": 160, "BAL": 180, "WSH":  30, "MIL": 230, "KC":  185,
+    "LAA": 315, "SD":  270, "ATH": 235, "OAK": 235, "ARI":  45,
+    "CWS": 160, "TEX":  45, "TOR":  20, "SEA": 340, "TBR": 350,
+    "HOU": 215,
+}
+
 # Pull-side park bonuses — extra HR boost for pull hitters at short-porch parks
 # L = bonus for left-handed pull hitters (pull to RF), R = right-handed (pull to LF)
 PULL_BONUS = {
@@ -505,6 +517,22 @@ def fetch_batting_stats_savant():
         print(f"[savant] Error: {e}")
         return {}
 
+def _classify_wind(wind_deg, wind_mph, home_team):
+    """Return (direction, note) using park-specific outfield bearing."""
+    if wind_mph < 5:
+        return "calm", "Calm winds — neutral conditions"
+    outfield_bearing = PARK_OUTFIELD_BEARING.get(home_team, 180)
+    # Wind FROM infield_bearing blows toward the outfield = tailwind
+    infield_bearing = (outfield_bearing + 180) % 360
+    delta = abs(((wind_deg - infield_bearing + 180) % 360) - 180)  # 0–180
+    if delta <= 55:
+        return "out",   f"Wind {wind_mph}mph blowing OUT — HR-friendly"
+    elif delta >= 125:
+        return "in",    f"Wind {wind_mph}mph blowing IN — suppresses HR"
+    else:
+        return "cross", f"Crosswind {wind_mph}mph — neutral"
+
+
 def fetch_weather(home_team, game_hour_et):
     """Fetch weather from Open-Meteo for the stadium at game time"""
     coords = STADIUM_COORDS.get(home_team)
@@ -533,22 +561,7 @@ def fetch_weather(home_team, game_hour_et):
         humidity = h["relativehumidity_2m"][idx]
         pressure = h["surface_pressure"][idx]
 
-        # Classify wind direction relative to park
-        # Most parks: wind from ~180-270° is "out" to CF/RF
-        # Simplified: 160-280° = tailwind (out), 0-90 or 315-360 = headwind (in)
-        if 160 <= wind_deg <= 280:
-            direction = "out"
-            note = f"Wind {wind_mph}mph blowing OUT — HR-friendly"
-        elif wind_deg <= 80 or wind_deg >= 310:
-            direction = "in"
-            note = f"Wind {wind_mph}mph blowing IN — suppresses HR"
-        else:
-            direction = "cross"
-            note = f"Crosswind {wind_mph}mph — neutral"
-
-        if wind_mph < 5:
-            direction = "calm"
-            note = "Calm winds — neutral conditions"
+        direction, note = _classify_wind(wind_deg, wind_mph, home_team)
 
         result = {
             "dome": False,
@@ -840,6 +853,45 @@ def fetch_monthly_batting():
     except Exception as e:
         print(f"[monthly] Error: {e}")
         return {}
+
+def fetch_platoon_splits():
+    """Per-batter career splits vs RHP and vs LHP — HR rate, OPS, SLG."""
+    cached = cache_get("platoon_splits", ttl=SPLITS_TTL)
+    if cached: return cached
+    # MLB Stats API bulk splits: vr = vs right-handed pitcher, vl = vs left
+    url = ("https://statsapi.mlb.com/api/v1/stats"
+           "?stats=statSplits&group=hitting&season=2026&sportId=1"
+           "&sitCodes=vr,vl&limit=1400&gameType=R")
+    try:
+        data = fetch(url)
+        result = {}
+        for group in data.get("stats", []):
+            for split in group.get("splits", []):
+                name = split.get("player", {}).get("fullName", "")
+                if not name: continue
+                code = split.get("split", {}).get("code", "").lower()
+                if code not in ("vr", "vl"): continue
+                stat = split.get("stat", {})
+                g  = int(stat.get("gamesPlayed", 1) or 1)
+                pa = int(stat.get("plateAppearances", 0) or 0)
+                hr = int(stat.get("homeRuns", 0) or 0)
+                if pa < 20: continue
+                entry = {
+                    "PA":    pa,
+                    "HR":    hr,
+                    "hrPct": round((hr / pa) * 100, 2) if pa > 0 else 0,
+                    "OPS":   _safe_float(stat.get("ops")),
+                    "SLG":   _safe_float(stat.get("slg")),
+                }
+                if name not in result: result[name] = {}
+                result[name][code] = entry
+        cache_set("platoon_splits", result)
+        print(f"[platoon] Loaded {len(result)} batters with vs-hand splits")
+        return result
+    except Exception as e:
+        print(f"[platoon] Error: {e}")
+        return {}
+
 
 def fetch_team_bullpen_era():
     """Team bullpen ERA — opponent bullpen quality affects late-game HR risk"""
@@ -1192,7 +1244,31 @@ def humid_adj(rh):
     if rh <= 40: return 1
     return 0
 
-def platoon_adj(bats, pitcher_hand):
+def platoon_adj(bats, pitcher_hand, platoon_splits=None):
+    """Score adjustment for batter hand vs pitcher hand.
+    Uses real per-batter vs-hand splits when available; falls back to flat ±8.
+    """
+    hand_key = "vr" if pitcher_hand == "R" else "vl"
+    opp_key  = "vl" if pitcher_hand == "R" else "vr"
+
+    if platoon_splits:
+        this_side = platoon_splits.get(hand_key, {})
+        opp_side  = platoon_splits.get(opp_key,  {})
+        this_pa   = this_side.get("PA", 0)
+        opp_pa    = opp_side.get("PA", 0)
+        if this_pa >= 30 and opp_pa >= 30:
+            this_hr  = this_side.get("hrPct", 0)
+            opp_hr   = opp_side.get("hrPct", 0)
+            this_ops = this_side.get("OPS", 0)
+            opp_ops  = opp_side.get("OPS", 0)
+            avg_hr   = (this_hr + opp_hr) / 2 if (this_hr + opp_hr) > 0 else 1
+            # HR rate differential between favored and disfavored matchup
+            hr_delta  = this_hr - opp_hr
+            ops_delta = this_ops - opp_ops
+            adj = round(hr_delta * 1.5 + ops_delta * 7)
+            return max(-10, min(14, adj))
+
+    # Fallback: flat handedness bonus
     if bats == "S": return 4
     return 8 if bats != pitcher_hand else -4
 
@@ -1408,7 +1484,8 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    home_away_splits=None, is_home=False,
                    monthly_stats=None, bullpen_era=4.50,
                    pitcher_sav=None, ump_score=0.0, game_total=0.0,
-                   h2h=None, pitch_matchup_adj=0, explain=False):
+                   h2h=None, pitch_matchup_adj=0, batter_platoon=None,
+                   explain=False):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -1423,10 +1500,21 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     ph       = pitcher_stats.get("hand", "R")
 
     # ── 1. Blend recent 15-day form (60/40 with season) ───────────────────────
-    if recent_stats and recent_stats.get("G_recent", 0) >= 7:
-        hr_pct = recent_stats["hrPct_recent"] * 0.60 + hr_pct * 0.40
-        ops    = recent_stats["OPS_recent"]   * 0.55 + ops    * 0.45
-        slg    = recent_stats["SLG_recent"]   * 0.55 + slg    * 0.45
+    recency_bonus = 0
+    season_hr_pct = hr_pct  # keep season baseline for recency comparison
+    if recent_stats and recent_stats.get("G_recent", 0) >= 5:
+        r_hr  = recent_stats["hrPct_recent"]
+        hr_pct = r_hr * 0.60 + hr_pct * 0.40
+        ops    = recent_stats["OPS_recent"] * 0.55 + ops * 0.45
+        slg    = recent_stats["SLG_recent"] * 0.55 + slg * 0.45
+        # Explicit hot/cold bonus on top of the blend
+        if season_hr_pct > 0:
+            ratio = r_hr / season_hr_pct
+            if   ratio >= 2.0: recency_bonus =  7
+            elif ratio >= 1.5: recency_bonus =  5
+            elif ratio >= 1.25: recency_bonus = 3
+            elif ratio <= 0.4:  recency_bonus = -5
+            elif ratio <= 0.6:  recency_bonus = -3
 
     # ── 2. Blend home/away split (35% weight, 15+ game minimum) ──────────────
     if home_away_splits:
@@ -1486,24 +1574,25 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     situ += temp_adj(wx.get("temp", 72))
     situ += baro_adj(wx.get("pressure", 1013))
     situ += humid_adj(wx.get("humidity", 55))
-    situ += platoon_adj(bats, ph)
+    situ += platoon_adj(bats, ph, batter_platoon)
     situ += lineup_adj(lineup_pos)
-    situ += ump_score * 2.5                    # ump: was 2.0
+    situ += ump_score * 2.5
     situ += game_total_adj(game_total)
     if bullpen_era >= 5.20:   situ += 4
     elif bullpen_era >= 4.80: situ += 2
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj)))
+    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus)))
 
     if explain:
         breakdown = {
-            "platoon": round(platoon_adj(bats, ph)),
+            "platoon": round(platoon_adj(bats, ph, batter_platoon)),
             "wind":    round(wind_adj(wx) * 0.70),
             "park":    round(((effective_pf - 100) / 50) * 12),
             "h2h":     h2h_adj(h2h),
             "pitch":   pitch_matchup_adj,
+            "recency": recency_bonus,
             "elite_p": -12 if q == "elite" else 0,
             "vuln_p":  round((era - 3.5) * 5.5 + 16) if q == "danger" else 0,
             "fatigue": 7 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
@@ -1600,6 +1689,7 @@ def build_daily_data(date_str):
         # Enrichment (longer TTL, fail gracefully)
         f_homeaway = ex.submit(fetch_home_away_splits)
         f_monthly  = ex.submit(fetch_monthly_batting)
+        f_platoon  = ex.submit(fetch_platoon_splits)
         f_bullpen  = ex.submit(fetch_team_bullpen_era)
         f_psav     = ex.submit(fetch_pitcher_savant_allowed)
         # New free integrations
@@ -1633,6 +1723,7 @@ def build_daily_data(date_str):
     injuries        = safe(f_injuries)
     home_away       = safe(f_homeaway)
     monthly         = safe(f_monthly)
+    platoon_data    = safe(f_platoon)
     bullpen         = safe(f_bullpen)
     pitcher_sav_map = safe(f_psav)
     ump_live        = safe(f_ump_live)
@@ -1745,6 +1836,7 @@ def build_daily_data(date_str):
                 game_total=game_total,
                 h2h=h2h,
                 pitch_matchup_adj=p_adj,
+                batter_platoon=platoon_data.get(name),
                 explain=True,
             )
             tier = get_tier(score)
