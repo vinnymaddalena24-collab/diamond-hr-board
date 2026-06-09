@@ -28,7 +28,8 @@ CACHE_TTL    = 900   # 15 minutes — general data
 ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 HISTORY_FILE = os.environ.get("HISTORY_PATH", os.path.join("/tmp", "diamond_history.json"))
-API_TIMEOUT  = 10    # seconds — hard cap on all external API calls
+API_TIMEOUT  = 6     # seconds — hard cap on all external API calls
+BATCH_TIMEOUT = 22   # seconds — wall-clock cap on the parallel build batch
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -460,23 +461,16 @@ def fetch_batting_stats_savant():
     import csv as _csv, io as _io
     cached = cache_get("savant_batting")
     if cached: return cached
+    # Single combined request — xwOBA/xSLG merged in parallel, not sequentially
     url1 = ("https://baseballsavant.mlb.com/leaderboard/statcast"
             "?type=batter&year=2026&position=&team=&min_pa=10&csv=true")
-    url1_fallback = ("https://baseballsavant.mlb.com/leaderboard/statcast"
-                     "?type=batter&year=2026&position=&team=&min=10&csv=true")
     url2 = ("https://baseballsavant.mlb.com/leaderboard/expected_statistics"
             "?type=batter&year=2026&position=&team=&min=50&csv=true")
     try:
-        raw1 = fetch_savant(url1).lstrip("﻿")
-        # Fallback URL if primary returns no data
-        if len(raw1.strip()) < 100:
-            raw1 = fetch_savant(url1_fallback).lstrip("﻿")
-        # Diagnose CSV headers on first parse to catch column name changes
-        _diag = next(_csv.DictReader(_io.StringIO(raw1)), None)
-        if _diag:
-            print(f"[savant_cols] {list(_diag.keys())[:10]}")
-        else:
-            print(f"[savant_cols] No rows — raw start: {raw1[:120]!r}")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f1 = ex.submit(fetch_savant, url1, 8)
+            f2 = ex.submit(fetch_savant, url2, 8)
+        raw1 = f1.result().lstrip("﻿")
         result, id_map = {}, {}
         for row in _csv.DictReader(_io.StringIO(raw1)):
             name = _savant_name(row)
@@ -499,9 +493,8 @@ def fetch_batting_stats_savant():
                 }
                 if pid: id_map[pid] = name
             except: continue
-        # Merge xwOBA / xSLG from expected stats endpoint
         try:
-            raw2 = fetch_savant(url2).lstrip("﻿")
+            raw2 = f2.result().lstrip("﻿")
             for row in _csv.DictReader(_io.StringIO(raw2)):
                 name = _savant_name(row)
                 pid  = row.get("player_id", "").strip()
@@ -1809,42 +1802,50 @@ def build_daily_data(date_str):
         all_game_teams.add(g["away"])
         all_game_teams.add(g["home"])
 
-    # ── Step 2: Fetch EVERYTHING in one parallel batch ────────────────────────
-    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as ex:
-        # Core data
-        f_batting  = ex.submit(fetch_batting_season_stats)
-        f_recent   = ex.submit(fetch_recent_batting_stats, 15)
-        f_savant   = ex.submit(fetch_batting_stats_savant)
-        f_40man    = ex.submit(fetch_40man_roster)
-        f_rosters  = ex.submit(fetch_active_rosters)
-        f_injuries = ex.submit(fetch_injuries)
-        # Enrichment (longer TTL, fail gracefully)
-        f_homeaway = ex.submit(fetch_home_away_splits)
-        f_monthly  = ex.submit(fetch_monthly_batting)
-        f_platoon  = ex.submit(fetch_platoon_splits)
-        f_bullpen  = ex.submit(fetch_team_bullpen_era)
-        f_psav     = ex.submit(fetch_pitcher_savant_allowed)
-        # New free integrations
-        f_ump_live = ex.submit(fetch_ump_zone_live, date_str)
-        f_sprint   = ex.submit(fetch_sprint_speed)
-        f_totals   = ex.submit(fetch_game_totals, date_str)
-        # All pitcher stats + logs in parallel
-        f_p_stats  = {pid: ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
-        f_p_logs   = {pid: ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
-        # All weather in parallel
-        f_wx = {}
-        for gid, (home, hour) in game_wx_keys.items():
-            f_wx[gid] = ex.submit(fetch_weather, home, hour)
-        # Pitcher throwing hand (batch), active 26-man rosters, H2H matchups
-        f_pitcher_details = ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
-        f_active = {team: ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
-        f_h2h    = {pid: ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
-        f_p_arsenal    = ex.submit(fetch_pitcher_arsenal)
-        f_b_pitch      = ex.submit(fetch_batter_pitch_stats)
+    # ── Step 2: Fetch EVERYTHING in one parallel batch (hard 22s wall-clock cap) ─
+    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=30)
+    # Core data
+    f_batting  = _ex.submit(fetch_batting_season_stats)
+    f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
+    f_savant   = _ex.submit(fetch_batting_stats_savant)
+    f_40man    = _ex.submit(fetch_40man_roster)
+    f_rosters  = _ex.submit(fetch_active_rosters)
+    f_injuries = _ex.submit(fetch_injuries)
+    # Enrichment (longer TTL, fail gracefully)
+    f_homeaway = _ex.submit(fetch_home_away_splits)
+    f_monthly  = _ex.submit(fetch_monthly_batting)
+    f_platoon  = _ex.submit(fetch_platoon_splits)
+    f_bullpen  = _ex.submit(fetch_team_bullpen_era)
+    f_psav     = _ex.submit(fetch_pitcher_savant_allowed)
+    # New free integrations
+    f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
+    f_sprint   = _ex.submit(fetch_sprint_speed)
+    f_totals   = _ex.submit(fetch_game_totals, date_str)
+    # All pitcher stats + logs in parallel
+    f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
+    f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
+    # All weather in parallel
+    f_wx = {}
+    for gid, (home, hour) in game_wx_keys.items():
+        f_wx[gid] = _ex.submit(fetch_weather, home, hour)
+    # Pitcher throwing hand (batch), active 26-man rosters, H2H matchups
+    f_pitcher_details = _ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
+    f_active = {team: _ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
+    f_h2h    = {pid: _ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
+    f_p_arsenal    = _ex.submit(fetch_pitcher_arsenal)
+    f_b_pitch      = _ex.submit(fetch_batter_pitch_stats)
+    # Wait max BATCH_TIMEOUT seconds — anything still running gets abandoned (returns {})
+    _all = ([f_batting,f_recent,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
+             f_monthly,f_platoon,f_bullpen,f_psav,f_ump_live,f_sprint,f_totals,
+             f_pitcher_details,f_p_arsenal,f_b_pitch]
+            + list(f_p_stats.values()) + list(f_p_logs.values())
+            + list(f_wx.values()) + list(f_active.values()) + list(f_h2h.values()))
+    concurrent.futures.wait(_all, timeout=BATCH_TIMEOUT)
+    _ex.shutdown(wait=False)
 
-    # Collect results safely
+    # Collect results safely — futures not done within BATCH_TIMEOUT return {}
     def safe(f):
-        try: return f.result() or {}
+        try: return f.result(timeout=0) or {}
         except: return {}
 
     batting         = safe(f_batting)
@@ -1866,7 +1867,7 @@ def build_daily_data(date_str):
     pitcher_details = safe(f_pitcher_details)
     active_rosters  = {}
     for team, f in f_active.items():
-        try: active_rosters[team] = f.result() or set()
+        try: active_rosters[team] = f.result(timeout=0) or set()
         except: active_rosters[team] = set()
     h2h_maps = {pid: (safe(f) or {}) for pid, f in f_h2h.items()}
     pitcher_arsenal   = safe(f_p_arsenal)
