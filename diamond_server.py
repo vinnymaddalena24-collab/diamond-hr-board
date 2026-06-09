@@ -15,11 +15,13 @@ Fetches on every page load:
 All data is cached for 15 minutes so rapid refreshes don't re-fetch.
 """
 
-import json, time, threading, traceback, difflib, os, concurrent.futures
+import json, time, threading, traceback, difflib, os, concurrent.futures, socket
 from datetime import datetime, timezone, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse, parse_qs
+
+socket.setdefaulttimeout(8)  # global hard cap — no socket op can hang beyond 8s
 
 # ── CONFIG ───────────────────────────────────────────────────────────────────
 PORT = int(os.environ.get("PORT", 8765))
@@ -2116,8 +2118,17 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/data":
             date_str = params.get("date", [get_today_str()[0]])[0]
             try:
-                data = build_daily_data(date_str)
-                self.send_json(data)
+                _result = [None, None]
+                def _run():
+                    try: _result[0] = build_daily_data(date_str)
+                    except Exception as e: _result[1] = e
+                t = threading.Thread(target=_run, daemon=True)
+                t.start(); t.join(timeout=28)
+                if _result[1]: raise _result[1]
+                if _result[0] is None:
+                    self.send_json({"error":"build timeout","games":[],"top5":[],"injuryList":[],"date":date_str}, 200)
+                else:
+                    self.send_json(_result[0])
             except Exception as e:
                 traceback.print_exc()
                 self.send_json({"error": str(e)}, 500)
@@ -2269,7 +2280,7 @@ if __name__ == "__main__":
   ─────────────────────────────────────────
 """)
 
-    server = HTTPServer((HOST, PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
 
     # Pre-warm cache in background
     def warm():
