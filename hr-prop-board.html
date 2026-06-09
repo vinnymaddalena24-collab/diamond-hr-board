@@ -1040,20 +1040,27 @@ function pitcherDetailCard(pitcher, teamAbbr) {
 }
 
 function renderGameDetail(g, players) {
-  const {confirmed, projected} = sortedPlayers(players);
   const wx = activeWX[g.id]||{};
   const sp0 = g.serverPlayers && g.serverPlayers[0];
   const umpName = sp0 ? (sp0.hpUmp||'') : '';
 
+  // Group by team, each group sorted by score desc
+  const byTeam = (abbr) => players.filter(p=>p.team===abbr).sort((a,b)=>b.score-a.score);
+  const awayPlayers = byTeam(g.aw);
+  const homePlayers = byTeam(g.hm);
+  // Fallback: any players not matched to either abbr (edge case)
+  const matched = new Set([...awayPlayers, ...homePlayers].map(p=>p.name));
+  const rest = players.filter(p=>!matched.has(p.name)).sort((a,b)=>b.score-a.score);
+
   let tableRows = '';
-  if(confirmed.length){
-    tableRows += `<tr class="section-row"><td colspan="9">✓ Confirmed Lineup (${confirmed.length})</td></tr>`;
-    tableRows += confirmed.map(p=>playerRow(p,g)).join('');
-  }
-  if(projected.length){
-    tableRows += `<tr class="section-row"><td colspan="9">Projected / Not Yet Confirmed (${projected.length})</td></tr>`;
-    tableRows += projected.map(p=>playerRow(p,g)).join('');
-  }
+  const teamSection = (abbr, teamPlayers) => {
+    if(!teamPlayers.length) return '';
+    return `<tr class="section-row"><td colspan="9">${abbr} — ${teamPlayers.length} PLAYERS</td></tr>`
+      + teamPlayers.map(p=>playerRow(p,g)).join('');
+  };
+  tableRows += teamSection(g.aw, awayPlayers);
+  tableRows += teamSection(g.hm, homePlayers);
+  if(rest.length) tableRows += teamSection('OTHER', rest);
 
   const umpBadge = umpName ? `<span class="cbdg ump" style="align-self:center">⚖ ${umpName}</span>` : '';
   return `<div class="gc-detail">
