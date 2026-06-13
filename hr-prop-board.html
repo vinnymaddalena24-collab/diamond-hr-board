@@ -536,11 +536,8 @@ table.pt th.c{text-align:center;padding:7px 6px}
   <button class="ftab" data-tab="good">✅ A+ PICKS</button>
   <button class="ftab" data-tab="hot">🔥 HOT</button>
   <button class="ftab" data-tab="platoon">⚡ PLATOON</button>
-  <button class="ftab" data-tab="confirmed">✓ CONFIRMED</button>
-  <button class="ftab" data-tab="targets" id="targetsTabBtn">🎯 TARGETS <span id="targetsCt" style="display:none;background:#fff;color:var(--amber);font-size:7px;padding:1px 5px;border-radius:10px;margin-left:3px;font-weight:700;"></span></button>
   <button class="ftab" data-tab="soon">⏰ NEXT 3H</button>
-  <div class="fb-div"></div>
-  <button class="ftab" data-tab="search">🔍 LOOKUP</button>
+  <button class="ftab" data-tab="pitchers">⚾ PITCHERS</button>
   <input class="fb-search" id="quickSearch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
 </div>
 
@@ -551,18 +548,8 @@ table.pt th.c{text-align:center;padding:7px 6px}
     <!-- INJURY BAR -->
     <div id="injBar"></div>
 
-    <!-- SEARCH PANEL -->
-    <div class="search-panel" id="searchPanel">
-      <div class="search-wrap">
-        <input class="search-input" id="playerSearchInput" type="text" placeholder="Search any MLB hitter — Aaron Judge, Shohei Ohtani..." oninput="debounceSearch(this.value)">
-        <span class="status-pill loading" id="searchStatus" style="display:none">...</span>
-      </div>
-      <div class="search-hint">Base score uses home park + neutral pitcher + calm conditions. Actual game score varies.</div>
-      <div id="searchResults"></div>
-    </div>
-
-    <!-- TARGETS PANEL -->
-    <div class="targets-panel" id="targetsPanel"></div>
+    <!-- PITCHERS PANEL -->
+    <div id="pitchersPanel" style="display:none"></div>
 
     <!-- BOARD -->
     <div id="board"></div>
@@ -651,8 +638,6 @@ let activeGames = [], activeWX = {};
 let serverTop5 = [], serverInjuries = [];
 let sortCol = 'score', sortDir = 'desc';
 let autoRefreshTimer = null;
-let targetSet = new Set(JSON.parse(localStorage.getItem('dmd_targets') || '[]'));
-function saveTargets() { localStorage.setItem('dmd_targets', JSON.stringify([...targetSet])); }
 
 // ═══════════════════════════════════════════════════
 // UTILITIES
@@ -779,7 +764,7 @@ function computeEdges(p, g) {
 // ═══════════════════════════════════════════════════
 let playerMap  = {};
 let sprayCache = {};        // player.name → events array (null = fetching)
-let expandedPlayer = null;  // name of currently expanded player
+let expandedPlayer = null;
 let sprayFilter = {};       // player.name → 'all'|'hr'|'xbh'
 
 // [LF, LC, CF, RC, RF] distances per park
@@ -1396,8 +1381,6 @@ function renderGameCard(g) {
   if(activeTab==='good')      filtered = filtered.filter(p=>p.score>=65);
   if(activeTab==='hot')       filtered = filtered.filter(p=>p.hotStreak);
   if(activeTab==='platoon')   filtered = filtered.filter(p=>p.platoon>=8);
-  if(activeTab==='confirmed') filtered = filtered.filter(p=>p.confirmed);
-  if(activeTab==='targets')   filtered = filtered.filter(p=>targetSet.has(p.name));
   if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
   if(!filtered.length && activeTab!=='all' && activeTab!=='soon') return '';
 
@@ -1509,13 +1492,8 @@ function renderGameDetail(g, players) {
   tableRows += teamSection(g.hm, homePlayers);
   if(rest.length) tableRows += teamSection('OTHER', rest);
 
-  const umpBadge = umpName ? `<span class="cbdg ump" style="align-self:center">⚖ ${umpName}</span>` : '';
   return `<div class="gc-detail">
-    <div class="gcd-pitcher-strip">
-      ${pitcherDetailCard(g.ap, g.aw)}
-      ${pitcherDetailCard(g.hp, g.hm)}
-      ${umpBadge}
-    </div>
+    ${umpName ? `<div style="padding:6px 16px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
     <div class="pt-wrap">
       <table class="pt">
         <thead><tr>
@@ -1562,7 +1540,6 @@ function laCell(la) {
 
 function playerRow(p, g) {
   const sel = legs.find(l=>l.name===p.name);
-  const isTgt = targetSet.has(p.name);
   const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
   const sc = scoreColor(p.tier);
   const edges = computeEdges(p, g);
@@ -1649,7 +1626,6 @@ function playerRow(p, g) {
     return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap">${m.name.split(' ')[0]} ${m.pct}%</span>`;
   }).join('') : '';
 
-  const sprayRowHtml = expandedPlayer === p.name ? buildSprayRow(p) : '';
   return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
   <!-- Photo / parlay select -->
   <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add to parlay slip" style="cursor:pointer">
@@ -1699,7 +1675,7 @@ function playerRow(p, g) {
   ${kCell(p.hardHit, v => v.toFixed(0)+'%', 48, 38)}
   <!-- Launch Angle -->
   ${laCell(p.la)}
-</tr>${sprayRowHtml}`;
+</tr>`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1708,15 +1684,11 @@ function playerRow(p, g) {
 function render() {
   renderInjuryBar();
   renderPicks();
-  updateTargetsBadge();
 
-  const isSearch  = activeTab === 'search';
-  const isTargets = activeTab === 'targets';
-  document.getElementById('searchPanel').style.display  = isSearch  ? '' : 'none';
-  document.getElementById('targetsPanel').style.display = isTargets ? '' : 'none';
+  const isPitchers = activeTab === 'pitchers';
+  document.getElementById('pitchersPanel').style.display = isPitchers ? '' : 'none';
 
-  if(isSearch)  { document.getElementById('board').innerHTML=''; return; }
-  if(isTargets) { renderTargetsPanel(); document.getElementById('board').innerHTML=''; return; }
+  if(isPitchers) { renderPitchersTab(); document.getElementById('board').innerHTML=''; return; }
 
   if(!activeGames.length) {
     document.getElementById('board').innerHTML='<div class="no-games-msg">NO GAMES SCHEDULED FOR THIS DATE</div>';
@@ -1751,35 +1723,72 @@ function toggleGame(id) {
 }
 
 // ═══════════════════════════════════════════════════
-// TARGETS
+// PITCHERS TAB
 // ═══════════════════════════════════════════════════
-function toggleTarget(name) {
-  targetSet.has(name) ? targetSet.delete(name) : targetSet.add(name);
-  saveTargets(); updateTargetsBadge(); render();
-}
-function updateTargetsBadge() {
-  const ct = document.getElementById('targetsCt');
-  if(!ct) return;
-  if(targetSet.size>0){ ct.textContent=targetSet.size; ct.style.display=''; }
-  else ct.style.display='none';
-}
-function renderTargetsPanel() {
-  const el = document.getElementById('targetsPanel');
-  if(!targetSet.size){ el.innerHTML=`<div class="empty-msg">🎯 NO TARGETS<br><br><span style="font-size:9px">Click ★ on any player to add to watchlist</span></div>`; return; }
-  const today=[], seen=new Set();
-  for(const g of activeGames) for(const p of buildPlayers(g)) {
-    if(targetSet.has(p.name)&&!seen.has(p.name)){ today.push(p); seen.add(p.name); }
+function renderPitchersTab() {
+  const el = document.getElementById('pitchersPanel');
+  if(!activeGames.length){ el.innerHTML='<div class="no-games-msg">NO GAMES SCHEDULED</div>'; return; }
+
+  const pitchers = [];
+  for(const g of activeGames) {
+    if(g.ap && g.ap.n && g.ap.n !== 'TBD') pitchers.push({p:g.ap, team:g.aw, opp:g.hm, venue:g.venue, time:g.time, gameId:g.id, home:false});
+    if(g.hp && g.hp.n && g.hp.n !== 'TBD') pitchers.push({p:g.hp, team:g.hm, opp:g.aw, venue:g.venue, time:g.time, gameId:g.id, home:true});
   }
-  today.sort((a,b)=>b.score-a.score);
-  const notPlaying=[...targetSet].filter(n=>!seen.has(n));
-  el.innerHTML=`<div style="padding-bottom:14px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:2px">🎯 TARGETS — ${targetSet.size} PLAYER${targetSet.size!==1?'S':''}</span>
-      <button onclick="targetSet.clear();saveTargets();updateTargetsBadge();renderTargetsPanel()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:8px;padding:4px 12px;cursor:pointer;border-radius:5px;transition:all .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">CLEAR ALL</button>
+  pitchers.sort((a,b) => (a.p.era||99) - (b.p.era||99));
+
+  const rows = pitchers.map(({p, team, opp, venue, time, home}) => {
+    const ec = eraClass(p.era);
+    const recEc = eraClass(p.recentEra);
+    const vel = (p.vel && p.vel !== 92.5) ? p.vel : null;
+    const k9c = (p.k9||0) >= 10 ? 'kg' : (p.k9||0) >= 8 ? 'ka' : 'kr';
+    const fbPct = p.fb || 38;
+    const fbCls = fbPct >= 45 ? 'kr' : fbPct >= 38 ? 'ka' : 'kg';
+    const startsHtml = (p.starts||[]).slice(0,5).map(s => {
+      const c = s.quality==='good'?'var(--green)':s.quality==='bad'?'var(--red)':'var(--amber)';
+      const ipFmt = s.ip % 1 === 0 ? `${s.ip}.0` : s.ip;
+      const hrBadge = s.hr > 0 ? `<span style="color:var(--red);margin-left:2px">${s.hr}HR</span>` : '';
+      return `<div style="font-family:'JetBrains Mono',monospace;font-size:8px;padding:3px 0;border-bottom:1px solid var(--dim);display:flex;gap:6px;align-items:center">
+        <span style="color:var(--muted);width:50px;flex-shrink:0">${s.date||''}</span>
+        <span style="color:var(--sub);width:24px;flex-shrink:0">@${s.opp}</span>
+        <span style="color:${c};font-weight:700;width:32px;flex-shrink:0">${ipFmt}IP</span>
+        <span style="color:${c};font-weight:700">${s.er}ER${hrBadge}</span>
+        <span style="color:var(--muted);margin-left:auto">${s.k}K ${s.bb}BB ${s.pc}p</span>
+      </div>`;
+    }).join('');
+    return `<tr style="border-bottom:1px solid var(--border);vertical-align:top">
+      <td style="padding:10px 14px;white-space:nowrap">
+        <div style="font-weight:700;font-size:14px">${p.n}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px">${team} <span style="color:var(--dim)">vs</span> ${opp} · ${time}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:1px">${venue}${home?' (HOME)':' (AWAY)'}</div>
+      </td>
+      <td class="kst ${ec}" style="vertical-align:middle">${p.era.toFixed(2)}<span class="kl">ERA</span></td>
+      <td class="kst ${recEc}" style="vertical-align:middle">${p.recentEra.toFixed(2)}<span class="kl">REC.ERA</span></td>
+      <td class="kst ${p.k9 > 0 ? k9c : ''}" style="vertical-align:middle">${p.k9 > 0 ? p.k9.toFixed(1) : '—'}<span class="kl">K/9</span></td>
+      <td class="kst ${fbCls}" style="vertical-align:middle">${fbPct}%<span class="kl">FB%</span></td>
+      <td class="kst" style="vertical-align:middle">${vel ? vel+'mph' : '—'}<span class="kl">VEL</span></td>
+      <td style="padding:10px 14px;font-family:'JetBrains Mono',monospace">
+        <div style="font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px">LAST ${Math.min(5,(p.starts||[]).length)} STARTS</div>
+        ${startsHtml || '<span style="font-size:8px;color:var(--dim)">No data yet</span>'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div style="padding:16px 20px">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2.5px;color:var(--muted);margin-bottom:12px">TODAY'S STARTERS — ${pitchers.length} PITCHERS</div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:700px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:6px 14px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">PITCHER</th>
+          <th style="text-align:center;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">ERA</th>
+          <th style="text-align:center;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">REC.ERA</th>
+          <th style="text-align:center;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">K/9</th>
+          <th style="text-align:center;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">FB%</th>
+          <th style="text-align:center;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">VEL</th>
+          <th style="text-align:left;padding:6px 14px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">RECENT STARTS</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>
-    ${today.length?`<div class="pt-wrap"><table class="pt"><thead><tr><th class="td-ph"></th><th>PLAYER</th><th class="c">SCORE</th><th class="c">FORM</th><th class="c">ISO</th><th class="c">xwOBA</th><th class="c">Brl/BIP</th><th class="c">SwStr%</th><th class="c">Sweet%</th><th class="c">FB%</th><th class="c">HH%</th><th class="c">LA</th></tr></thead><tbody>${today.map(p=>{const g=activeGames.find(g=>g.id===p.gameId)||activeGames[0];return playerRow(p,g);}).join('')}</tbody></table></div>`:'<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:12px 0">Targets not in today\'s lineup yet — check back after lineups post.</div>'}
-    ${notPlaying.length?`<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin:12px 0 6px">NOT PLAYING TODAY</div>
-    ${notPlaying.map(n=>`<div style="padding:8px 12px;background:var(--card);border:1px solid var(--border);margin-bottom:4px;border-radius:6px;display:flex;align-items:center;justify-content:space-between"><span style="font-weight:700">${n}</span><button onclick="toggleTarget('${n.replace(/'/g,"&#39;")}');event.stopPropagation()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;transition:color .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button></div>`).join('')}`:''}
   </div>`;
 }
 
@@ -1787,20 +1796,9 @@ function renderTargetsPanel() {
 // PARLAY SLIP
 // ═══════════════════════════════════════════════════
 function handleRowClick(el) {
-  // Row click → inline spray chart below row
-  try {
-    const leg = JSON.parse(el.dataset.leg);
-    const name = leg.name;
-    expandedPlayer = expandedPlayer === name ? null : name;
-    if (expandedPlayer) {
-      const player = playerMap[name];
-      if (player) fetchSprayData(player);
-    }
-    render();
-  } catch(e) {}
+  try { toggleLeg(JSON.parse(el.dataset.leg)); } catch(e) {}
 }
 function handlePhotoClick(el, event) {
-  // Photo click → parlay slip (stops row click)
   event.stopPropagation();
   try { toggleLeg(JSON.parse(el.closest('tr').dataset.leg)); } catch(e) {}
 }
@@ -2006,60 +2004,7 @@ function copySlip() {
   setTimeout(()=>b.textContent='COPY SLIP', 2200);
 }
 
-// ═══════════════════════════════════════════════════
-// PLAYER SEARCH
-// ═══════════════════════════════════════════════════
-let _searchTimer = null;
-function debounceSearch(q) {
-  clearTimeout(_searchTimer);
-  const res=document.getElementById('searchResults');
-  if(q.length<2){ res.innerHTML=''; return; }
-  _searchTimer = setTimeout(()=>doSearch(q), 320);
-}
-async function doSearch(q) {
-  const res=document.getElementById('searchResults');
-  const st=document.getElementById('searchStatus');
-  st.style.display=''; st.textContent='...';
-  try {
-    const r = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`,{cache:'no-store'});
-    if(!r.ok) throw new Error(`Server error ${r.status}`);
-    const data = await r.json();
-    st.style.display='none';
-    if(!data.length){ res.innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:8px 0">No hitters found.</div>'; return; }
-    res.innerHTML = data.map(renderSearchCard).join('');
-  } catch(e) {
-    st.style.display='none';
-    res.innerHTML=`<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--red);padding:8px 0">⚠ ${e.message}</div>`;
-  }
-}
-function renderSearchCard(p) {
-  const t = p.tier||tierOf(p.score||0);
-  const c = scoreColor(t);
-  const ops3 = p.OPS ? p.OPS.toFixed(3) : '—';
-  const chips = [
-    `<span class="src-chip">${p.G}G</span>`,
-    `<span class="src-chip${p.HR>=15?' hi':''}">${p.HR}HR</span>`,
-    `<span class="src-chip${p.hrPct>=20?' hi':''}">${p.hrPct}% HR/G</span>`,
-    p.barrel?`<span class="src-chip${p.barrel>=14?' hi':''}">${p.barrel}% BBL</span>`:'',
-    p.hardHit?`<span class="src-chip">${p.hardHit}% HH</span>`:'',
-    p.avgEV?`<span class="src-chip">${p.avgEV} EV</span>`:'',
-    `<span class="src-chip">${ops3} OPS</span>`,
-    p.xwOBA?`<span class="src-chip">${p.xwOBA.toFixed(3)} xwOBA</span>`:'',
-    p.sprintSpeed?`<span class="src-chip">${p.sprintSpeed}ft/s</span>`:'',
-  ].filter(Boolean).join('');
-  return `<div class="src-card">
-    <div class="src-main">
-      <div class="src-name">${p.name}${p.onIL?'<span class="src-il">IL</span>':''}</div>
-      <div class="src-meta">${p.team} · ${p.pos||'?'} · Bats ${p.bats||'?'} · PF ${p.parkFactor||100}</div>
-      <div class="src-chips">${chips}</div>
-    </div>
-    <div class="src-score-wrap">
-      <div class="src-score" style="color:${c}">${p.score||0}</div>
-      <div class="src-lbl">COMPOSITE</div>
-      <span class="tier-badge t${t}">${t}</span>
-    </div>
-  </div>`;
-}
+
 
 // ═══════════════════════════════════════════════════
 // DATE NAV
@@ -2080,7 +2025,7 @@ document.getElementById('filterBar').addEventListener('click', e => {
   activeTab = b.dataset.tab;
   document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on','on-g'));
   b.classList.add('on');
-  expandedGames = new Set(); expandedPlayer = null; // collapse all on tab change
+  expandedGames = new Set();
   render();
 });
 
@@ -2088,7 +2033,6 @@ document.getElementById('filterBar').addEventListener('click', e => {
 // INIT
 // ═══════════════════════════════════════════════════
 renderSlip();
-updateTargetsBadge();
 loadDay(currentDate);
 </script>
 </body>
