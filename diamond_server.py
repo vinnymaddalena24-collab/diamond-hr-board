@@ -33,7 +33,7 @@ ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 HISTORY_FILE = os.environ.get("HISTORY_PATH", os.path.join("/tmp", "diamond_history.json"))
 API_TIMEOUT  = 5     # seconds — hard cap on all external API calls
-BATCH_TIMEOUT = 14   # seconds — wall-clock cap on the parallel build batch (Savant is background)
+BATCH_TIMEOUT = 22   # seconds — MLB Stats API only (Savant is background); ~100 calls / 40 workers
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -2003,8 +2003,9 @@ def _do_build(date_str):
             _bg(lambda p=pid: fetch_h2h_vs_pitcher(p))
 
     # ── Step 3: Fetch core data in parallel — fast MLB Stats API only ────────────
-    # Nothing here hits Baseball Savant. All should complete in <12s on cold cache.
-    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+    # Nothing here hits Baseball Savant. ~100 total calls; 40 workers reduces
+    # queueing so all critical calls complete well within BATCH_TIMEOUT.
+    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=40)
     f_batting  = _ex.submit(fetch_batting_season_stats)
     f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
     f_recent7  = _ex.submit(fetch_recent_batting_stats, 7)
