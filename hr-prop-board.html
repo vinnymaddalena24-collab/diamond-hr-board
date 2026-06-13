@@ -179,10 +179,22 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .lock-badge.imminent{background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.45);color:var(--red);animation:pulse 1.2s ease-in-out infinite}
 .lock-badge.locked{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:var(--red)}
 /* Row 2: pitcher pills */
-.gc-pitchers-row{display:flex;gap:6px;flex-wrap:nowrap}
-.gc-pp{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 10px;flex:1}
-.gc-pp.danger{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.04)}
-.gc-pp.elite{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.04)}
+.gc-pm-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+@media(max-width:540px){.gc-pm-row{grid-template-columns:1fr}}
+.gc-pm-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px}
+.gc-pm-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.gc-pm-team{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;background:var(--card2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;color:var(--sub);margin-right:5px}
+.gc-pm-name{font-size:13px;font-weight:700;color:var(--text)}
+.gc-pm-hand{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-left:5px}
+.gc-pm-vel{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--blue);white-space:nowrap}
+.gc-pm-stats{display:flex;gap:8px;flex-wrap:wrap}
+.gc-pm-stat{text-align:center}
+.gc-pm-sv{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;display:block;padding:2px 5px;border-radius:3px}
+.gc-pm-sv.danger{background:rgba(239,68,68,.12);color:var(--red)}
+.gc-pm-sv.elite{background:rgba(16,185,129,.12);color:var(--green)}
+.gc-pm-sv.mid{background:rgba(245,158,11,.1);color:var(--amber)}
+.gc-pm-sl{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);display:block;letter-spacing:.5px;margin-top:1px}
+.gc-pm-dots{margin-top:5px}
 .pp-tm{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:var(--muted);width:24px;flex-shrink:0}
 .pp-nm{font-size:12px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pp-era{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0}
@@ -1468,15 +1480,49 @@ function condBadges(g) {
 }
 
 function pitcherPill(pitcher, teamAbbr) {
-  const ec = eraClass(pitcher.era);
-  const vel = (pitcher.vel && pitcher.vel !== 92.5) ? `${pitcher.vel}mph` : '';
-  return `<div class="gc-pp ${ec}">
-    <span class="pp-tm">${teamAbbr}</span>
-    <span class="pp-nm">${pitcher.n}</span>
-    <span class="pp-era ${ec}">${pitcher.era.toFixed(2)}</span>
-    ${vel ? `<span class="pp-vel">${vel}</span>` : ''}
-    <span class="pp-hand">${pitcher.h}HP</span>
-    <span class="pp-dots">${formDots(pitcher.recentEra, pitcher.era, pitcher.fatigued, pitcher.starts)}</span>
+  // kept for any legacy callers — delegates to matchup card
+  return pitcherMatchupCard(pitcher, teamAbbr);
+}
+
+function pitcherMatchupCard(p, team) {
+  const M = 'font-family:\'JetBrains Mono\',monospace';
+  if(!p || p.n==='TBD') return `<div class="gc-pm-card"><span style="${M};font-size:9px;color:var(--muted)">${team} · TBD</span></div>`;
+  const ec = eraClass(p.era);
+  const vel = (p.vel && p.vel !== 92.5) ? p.vel : null;
+
+  // Top 3 pitch types compact
+  const pitchTypes = Object.entries(p.arsenal||{})
+    .filter(([,v]) => v.pct > 0)
+    .sort((a,b) => b[1].pct - a[1].pct)
+    .slice(0, 3);
+  const arsenalLine = pitchTypes.length
+    ? pitchTypes.map(([pt,v]) => {
+        const wc = (v.whiff_pct||0)>=30?'kg':(v.whiff_pct||0)>=20?'ka':'kr';
+        return `<span class="kst ${wc}" style="font-size:9px;padding:1px 4px">${pt} ${v.pct.toFixed(0)}%</span>`;
+      }).join('')
+    : '';
+
+  const fipColor = !p.fip ? '' : p.fip<=3.2?'var(--green)':p.fip>=4.5?'var(--red)':'var(--amber)';
+  const recentC = eraClass(p.recentEra||p.era);
+
+  return `<div class="gc-pm-card">
+    <div class="gc-pm-top">
+      <div>
+        <span class="gc-pm-team">${team}</span>
+        <span class="gc-pm-name">${p.n}</span>
+        <span class="gc-pm-hand">${p.h||'R'}HP</span>
+      </div>
+      ${vel?`<span class="gc-pm-vel">${vel}<span style="font-size:8px;color:var(--muted)">mph</span></span>`:''}
+    </div>
+    <div class="gc-pm-stats">
+      <div class="gc-pm-stat"><span class="gc-pm-sv ${ec}">${p.era.toFixed(2)}</span><span class="gc-pm-sl">ERA</span></div>
+      ${p.fip?`<div class="gc-pm-stat"><span class="gc-pm-sv" style="color:${fipColor}">${p.fip.toFixed(2)}</span><span class="gc-pm-sl">FIP</span></div>`:''}
+      ${p.xera?`<div class="gc-pm-stat"><span class="gc-pm-sv ${eraClass(p.xera)}">${p.xera.toFixed(2)}</span><span class="gc-pm-sl">xERA</span></div>`:''}
+      <div class="gc-pm-stat"><span class="gc-pm-sv ${recentC}">${(p.recentEra||p.era).toFixed(2)}</span><span class="gc-pm-sl">REC</span></div>
+      ${p.k9?`<div class="gc-pm-stat"><span class="gc-pm-sv" style="color:var(--sub)">${p.k9.toFixed(1)}</span><span class="gc-pm-sl">K/9</span></div>`:''}
+    </div>
+    ${arsenalLine?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:4px">${arsenalLine}</div>`:''}
+    <div class="gc-pm-dots">${formDots(p.recentEra||p.era, p.era, p.fatigued, p.starts)}</div>
   </div>`;
 }
 
@@ -1518,9 +1564,9 @@ function renderGameCard(g) {
           <span>${arrow} ${isExp ? 'HIDE' : allPlayers.length + ' PLAYERS'}</span>
         </div>
       </div>
-      <div class="gc-pitchers-row">
-        ${pitcherPill(g.ap, g.aw)}
-        ${pitcherPill(g.hp, g.hm)}
+      <div class="gc-pm-row">
+        ${pitcherMatchupCard(g.ap, g.aw)}
+        ${pitcherMatchupCard(g.hp, g.hm)}
       </div>
     </div>
     ${isExp ? renderGameDetail(g, filtered) : ''}
