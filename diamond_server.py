@@ -32,8 +32,8 @@ CACHE_TTL    = 900   # 15 minutes — general data
 ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 HISTORY_FILE = os.environ.get("HISTORY_PATH", os.path.join("/tmp", "diamond_history.json"))
-API_TIMEOUT  = 6     # seconds — hard cap on all external API calls
-BATCH_TIMEOUT = 45   # seconds — wall-clock cap on the parallel build batch
+API_TIMEOUT  = 5     # seconds — hard cap on all external API calls
+BATCH_TIMEOUT = 14   # seconds — wall-clock cap on the parallel build batch (Savant is background)
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -1932,7 +1932,12 @@ def calc_hit_rate(date_str):
 
 def build_daily_data(date_str):
     cached = cache_get(f"daily_{date_str}")
-    if cached: return cached
+    if cached:
+        # If cached result was partial (no Savant) and Savant is now ready, rebuild
+        if cached.get("partial") and cache_get("savant_batting"):
+            print(f"[build] Partial cache for {date_str} + Savant now ready — rebuilding")
+        else:
+            return cached
 
     # Only one build per date at a time — extra callers bail out immediately
     with _building_lock:
@@ -1981,22 +1986,28 @@ def _do_build(date_str):
         all_game_teams.add(g["away"])
         all_game_teams.add(g["home"])
 
-    # ── Step 2: Kick off slow Savant fetches in background (cache-only in main build) ─
-    # These hit Baseball Savant CSVs and can take 10-30s. We start them as daemons so
-    # they warm the cache for the NEXT request without blocking this one.
-    def _bg(*fns):
-        for fn in fns:
-            threading.Thread(target=fn, daemon=True).start()
-    if not cache_get("sprint_speed"):       _bg(fetch_sprint_speed)
-    if not cache_get("batter_pitch_stats"): _bg(fetch_batter_pitch_stats)
+    # ── Step 2: Kick off ALL slow Savant + optional fetches in background ────────
+    # Baseball Savant CSVs take 10-30s. We never block the main build on them —
+    # serve from cache if warm, otherwise proceed with defaults and let daemons
+    # warm the cache so the next request gets full data.
+    def _bg(fn):
+        threading.Thread(target=fn, daemon=True).start()
+    if not cache_get("savant_batting"):         _bg(fetch_batting_stats_savant)
+    if not cache_get("pitcher_savant_allowed"): _bg(fetch_pitcher_savant_allowed)
+    if not cache_get("pitcher_arsenal"):        _bg(fetch_pitcher_arsenal)
+    if not cache_get("sprint_speed"):           _bg(fetch_sprint_speed)
+    if not cache_get("batter_pitch_stats"):     _bg(fetch_batter_pitch_stats)
+    # H2H is nice-to-have; fire background threads for uncached pitchers
+    for pid in pitcher_ids:
+        if not cache_get(f"h2h_{pid}"):
+            _bg(lambda p=pid: fetch_h2h_vs_pitcher(p))
 
-    # ── Step 3: Fetch core data in parallel — all MLB Stats API (fast, reliable) ──
-    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=22)
+    # ── Step 3: Fetch core data in parallel — fast MLB Stats API only ────────────
+    # Nothing here hits Baseball Savant. All should complete in <12s on cold cache.
+    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
     f_batting  = _ex.submit(fetch_batting_season_stats)
     f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
     f_recent7  = _ex.submit(fetch_recent_batting_stats, 7)
-    # savant runs as a real future so wait() guarantees it completes before we build
-    f_savant   = _ex.submit(lambda: cache_get("savant_batting") or fetch_batting_stats_savant())
     f_40man    = _ex.submit(fetch_40man_roster)
     f_rosters  = _ex.submit(fetch_active_rosters)
     f_injuries = _ex.submit(fetch_injuries)
@@ -2004,24 +2015,17 @@ def _do_build(date_str):
     f_monthly  = _ex.submit(fetch_monthly_batting)
     f_platoon  = _ex.submit(fetch_platoon_splits)
     f_bullpen  = _ex.submit(fetch_team_bullpen_era)
-    # pitcher_savant_allowed + pitcher_arsenal run as real futures so they complete before build
-    f_psav      = _ex.submit(lambda: cache_get("pitcher_savant_allowed") or fetch_pitcher_savant_allowed())
-    f_p_arsenal = _ex.submit(lambda: cache_get("pitcher_arsenal") or fetch_pitcher_arsenal())
-    f_ump_live  = _ex.submit(fetch_ump_zone_live, date_str)
-    f_sprint    = _ex.submit(lambda: cache_get("sprint_speed") or {})
-    f_totals    = _ex.submit(fetch_game_totals, date_str)
-    f_p_stats   = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
-    f_p_logs    = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
-    f_wx = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
+    f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
+    f_totals   = _ex.submit(fetch_game_totals, date_str)
+    f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
+    f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
+    f_wx       = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
     f_pitcher_details = _ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
-    f_active = {team: _ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
-    f_h2h    = {pid: _ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
-    f_b_pitch   = _ex.submit(lambda: cache_get("batter_pitch_stats") or {})
-    _all = ([f_batting,f_recent,f_recent7,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
-             f_monthly,f_platoon,f_bullpen,f_psav,f_ump_live,f_sprint,f_totals,
-             f_pitcher_details,f_p_arsenal,f_b_pitch]
+    f_active   = {team: _ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
+    _all = ([f_batting,f_recent,f_recent7,f_40man,f_rosters,f_injuries,f_homeaway,
+             f_monthly,f_platoon,f_bullpen,f_ump_live,f_totals,f_pitcher_details]
             + list(f_p_stats.values()) + list(f_p_logs.values())
-            + list(f_wx.values()) + list(f_active.values()) + list(f_h2h.values()))
+            + list(f_wx.values()) + list(f_active.values()))
     concurrent.futures.wait(_all, timeout=BATCH_TIMEOUT)
     _ex.shutdown(wait=False)
     _lap("parallel batch done")
@@ -2034,16 +2038,13 @@ def _do_build(date_str):
     batting         = safe(f_batting)
     recent          = safe(f_recent)
     recent_7d       = safe(f_recent7)
-    savant          = safe(f_savant)
     rosters         = safe(f_rosters)
     injuries        = safe(f_injuries)
     home_away       = safe(f_homeaway)
     monthly         = safe(f_monthly)
     platoon_data    = safe(f_platoon)
     bullpen         = safe(f_bullpen)
-    pitcher_sav_map = safe(f_psav)
     ump_live        = safe(f_ump_live)
-    sprint_speed    = safe(f_sprint)
     game_totals     = safe(f_totals)
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
     pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
@@ -2053,9 +2054,15 @@ def _do_build(date_str):
     for team, f in f_active.items():
         try: active_rosters[team] = f.result(timeout=0) or set()
         except: active_rosters[team] = set()
-    h2h_maps = {pid: (safe(f) or {}) for pid, f in f_h2h.items()}
-    pitcher_arsenal   = safe(f_p_arsenal)
-    batter_pitch_data = safe(f_b_pitch)
+    # Savant + h2h served from cache (background daemons warmed it)
+    savant          = cache_get("savant_batting")          or {}
+    pitcher_sav_map = cache_get("pitcher_savant_allowed")  or {}
+    pitcher_arsenal = cache_get("pitcher_arsenal")         or {}
+    sprint_speed    = cache_get("sprint_speed")            or {}
+    batter_pitch_data = cache_get("batter_pitch_stats")    or {}
+    h2h_maps        = {pid: (cache_get(f"h2h_{pid}") or {}) for pid in pitcher_ids}
+    # If Savant was missing, mark result partial so it expires in 90s (daemons will have it by then)
+    _partial_build  = not savant
     _, et_hour = get_today_str()
 
     # ── Step 3b: Batter game logs (only non-pitchers on today's teams, background daemon) ─
@@ -2312,9 +2319,12 @@ def _do_build(date_str):
         "top5":      top5,
         "injuryList": list(injuries),
         "cacheExpires": int(time.time()) + CACHE_TTL,
+        "partial":   _partial_build,
     }
 
     cache_set(f"daily_{date_str}", result)
+    if _partial_build:
+        print("[build] Partial build (no Savant yet) — cache TTL set to 90s for auto-refresh")
     log_predictions(date_str, all_players)
     _lap(f"DONE — {len(games)} games, {len(all_players)} players")
     return result

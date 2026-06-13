@@ -167,6 +167,13 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .bd-matchup{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;letter-spacing:1px}
 .bd-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub)}
 .bd-badges{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-left:auto}
+/* Compact pitcher name row (non-Pitchers tabs) */
+.bd-pitchers-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.bd-pill{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 12px;flex:1;min-width:0}
+.bd-pill-team{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;background:var(--card2);padding:1px 5px;border-radius:3px;color:var(--sub);flex-shrink:0}
+.bd-pill-name{font-size:13px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bd-pill-hand{font-family:'JetBrains Mono',monospace;font-size:8px;flex-shrink:0}
+.bd-pill-era{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;flex-shrink:0}
 
 /* ── GAME CARD ── */
 .game-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s}
@@ -1211,7 +1218,9 @@ async function loadDay(dateObj) {
     }
     render();
     loadHistory(ds);
-    autoRefreshTimer = setTimeout(()=>loadDay(currentDate), REFRESH_MS);
+    // If build was partial (Savant not ready yet), refresh in 90s for full data
+    const refreshDelay = data.partial ? 90000 : REFRESH_MS;
+    autoRefreshTimer = setTimeout(()=>loadDay(currentDate), refreshDelay);
     // Re-render countdown badges every 60s without a network call
     if (!window._lockTimer) window._lockTimer = setInterval(render, 60000);
   } catch(err) {
@@ -1936,15 +1945,27 @@ function renderBoardWithStrip() {
   const lockBadge = lockBadgeHtml(selGame);
   const condBadgesHtml = condBadges(selGame);
 
+  // Compact pitcher name row (no stats — Pitchers tab has full detail)
+  function pitcherNamePill(p, team) {
+    if (!p || p.n === 'TBD') return `<div class="bd-pill"><span class="bd-pill-team">${team}</span><span class="bd-pill-name" style="color:var(--muted)">TBD</span></div>`;
+    const ec = p.era <= 3.5 ? 'var(--green)' : p.era >= 4.5 ? 'var(--red)' : 'var(--amber)';
+    return `<div class="bd-pill">
+      <span class="bd-pill-team">${team}</span>
+      <span class="bd-pill-name">${p.n}</span>
+      <span class="bd-pill-hand" style="color:var(--muted)">${p.h||'R'}HP</span>
+      <span class="bd-pill-era" style="color:${ec}">${p.era.toFixed(2)}</span>
+    </div>`;
+  }
+
   const detailHtml = `<div class="bd-wrap">
     <div class="bd-game-hd">
       <div class="bd-matchup">${selGame.aw} <span style="color:var(--muted)">@</span> ${selGame.hm}</div>
       <div class="bd-meta">${selGame.time} · ${selGame.venue||''}</div>
       <div class="bd-badges">${lockBadge}${condBadgesHtml}${wx.dome?'<span class="gc-live">DOME</span>':''}</div>
     </div>
-    <div class="gc-pm-row">
-      ${pitcherMatchupCard(selGame.ap, selGame.aw)}
-      ${pitcherMatchupCard(selGame.hp, selGame.hm)}
+    <div class="bd-pitchers-row">
+      ${pitcherNamePill(selGame.ap, selGame.aw)}
+      ${pitcherNamePill(selGame.hp, selGame.hm)}
     </div>
     ${gamePlayers.length ? renderGameDetail(selGame, gamePlayers) : '<div class="no-games-msg" style="padding:20px 0">NO PLAYERS MATCH THIS FILTER FOR THIS GAME</div>'}
   </div>`;
