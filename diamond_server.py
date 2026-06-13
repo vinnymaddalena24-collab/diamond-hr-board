@@ -1542,6 +1542,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     hard_hit = savant_stats.get("hard_hit_pct", 40)
     sweet    = savant_stats.get("sweet_spot_pct", 36)
     pull_pct = savant_stats.get("pull_pct", 40)
+    xwoba    = savant_stats.get("xwoba", 0)
     bats     = batter_stats.get("bats", "R")
     ph       = pitcher_stats.get("hand", "R")
 
@@ -1578,13 +1579,14 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
 
     # ── PROFILE: inherent power (reduced weights so stars don't auto-dominate) ──
     profile = 0
-    profile += min(hr_pct * 1.8, 20)           # was 2.3→27; now cap at 20
-    profile += min((ops - 0.600) * 28, 14)     # was 36→20; now cap at 14
-    profile += min((slg - 0.350) * 22, 10)     # was 30→15; now cap at 10
-    profile += min((barrel - 8) * 0.7, 8)
-    profile += min((hard_hit - 40) * 0.22, 5)
+    profile += min(hr_pct * 1.8, 20)
+    profile += min((ops - 0.600) * 28, 14)
+    profile += min((slg - 0.350) * 22, 10)
+    profile += min((barrel - 8) * 1.5, 14)     # barrel is the best HR predictor — doubled weight
+    profile += min((xwoba - 0.320) * 22, 8)    # xwOBA captures quality of contact holistically
+    profile += min((hard_hit - 40) * 0.20, 5)
     profile += min((iso - 0.180) * 18, 4)
-    profile += min((sweet - 36) * 0.2, 2)
+    profile += min((sweet - 36) * 0.15, 2)
     if pa_per_g >= 4.5: profile += 3
     elif pa_per_g >= 4.2: profile += 2
     elif pa_per_g < 3.0: profile -= 2
@@ -1642,7 +1644,8 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
             "elite_p": -12 if q == "elite" else 0,
             "vuln_p":  round((era - 3.5) * 5.5 + 16) if q == "danger" else 0,
             "fatigue": 7 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
-            "barrel":  round(min((savant_stats.get("barrel_pct", 8) - 8) * 0.7, 8)),
+            "barrel":  round(min((barrel - 8) * 1.5, 14)),
+            "xwoba":   round(min((xwoba - 0.320) * 22, 8), 1) if xwoba > 0.320 else 0,
         }
         return score, breakdown
     return score
@@ -1845,6 +1848,7 @@ def _do_build(date_str):
     _ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
     f_batting  = _ex.submit(fetch_batting_season_stats)
     f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
+    f_recent7  = _ex.submit(fetch_recent_batting_stats, 7)
     f_savant   = _ex.submit(lambda: cache_get("savant_batting") or {})
     f_40man    = _ex.submit(fetch_40man_roster)
     f_rosters  = _ex.submit(fetch_active_rosters)
@@ -1865,7 +1869,7 @@ def _do_build(date_str):
     f_h2h    = {pid: _ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
     f_p_arsenal = _ex.submit(lambda: cache_get("pitcher_arsenal") or {})
     f_b_pitch   = _ex.submit(lambda: cache_get("batter_pitch_stats") or {})
-    _all = ([f_batting,f_recent,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
+    _all = ([f_batting,f_recent,f_recent7,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
              f_monthly,f_platoon,f_bullpen,f_psav,f_ump_live,f_sprint,f_totals,
              f_pitcher_details,f_p_arsenal,f_b_pitch]
             + list(f_p_stats.values()) + list(f_p_logs.values())
@@ -1881,6 +1885,7 @@ def _do_build(date_str):
 
     batting         = safe(f_batting)
     recent          = safe(f_recent)
+    recent_7d       = safe(f_recent7)
     savant          = safe(f_savant)
     rosters         = safe(f_rosters)
     injuries        = safe(f_injuries)
@@ -2008,6 +2013,15 @@ def _do_build(date_str):
             month_hr_pct  = month_stat.get("hrPct_month", 0)
             hot_month     = (month_hr_pct > bat_stat.get("hrPct", 0) * 1.25
                              and month_stat.get("G_month", 0) >= 10)
+            r7 = recent_7d.get(name, {})
+            hr7_pct = r7.get("hrPct_recent", 0)
+            trend = 0
+            if recent_hr_pct > 0 and r7.get("G_recent", 0) >= 3:
+                ratio7 = hr7_pct / recent_hr_pct
+                if   ratio7 >= 1.6: trend = 2   # on fire
+                elif ratio7 >= 1.25: trend = 1  # heating up
+                elif ratio7 <= 0.35: trend = -2 # going cold fast
+                elif ratio7 <= 0.65: trend = -1 # cooling
 
             players.append({
                 "name":             name,
@@ -2040,6 +2054,10 @@ def _do_build(date_str):
                 "isHome":           is_home_game,
                 "recentHR":         recent_stat.get("HR_recent", 0),
                 "recentHRPct":      recent_hr_pct,
+                "recentHR7d":       r7.get("HR_recent", 0),
+                "recentG7d":        r7.get("G_recent", 0),
+                "recentHRPct7d":    hr7_pct,
+                "trend":            trend,
                 "monthHRPct":       month_hr_pct,
                 "hotStreak":        hot_streak,
                 "hotMonth":         hot_month,
@@ -2069,17 +2087,24 @@ def _do_build(date_str):
             print(f"[debug-0pl]  sample={sample}")
 
         players.sort(key=lambda x: x["score"], reverse=True)
+        # Stack detection: 2+ players with score ≥ 75 in same game = correlated upside
+        stack_players = [p for p in players if p["score"] >= 75]
         g["players"]    = players
         g["topPick"]    = players[0] if players else None
         g["gameTotal"]  = game_total
         g["hpUmpScore"] = ump_score
+        g["isStack"]    = len(stack_players) >= 2
+        g["stackCount"] = len(stack_players)
 
-    # Top 5 across all games
+    # Top 5 across all games — mark top 3 as best bets
     all_players = []
     for g in games:
         all_players.extend(g.get("players", []))
     all_players.sort(key=lambda x: x["score"], reverse=True)
     top5 = all_players[:5]
+    for i, p in enumerate(top5):
+        p["rank"] = i + 1
+        p["bestBet"] = i < 3
 
     result = {
         "date":      date_str,

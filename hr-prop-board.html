@@ -54,6 +54,30 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .dbtn:hover{border-color:var(--blue);color:var(--blue)}
 .dbtn.today{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.45);color:var(--blue);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;width:auto;padding:0 9px;letter-spacing:1px}
 
+/* ── BEST BETS BANNER ── */
+.best-bets{padding:14px 20px;background:linear-gradient(135deg,rgba(6,12,24,.97) 0%,rgba(15,25,50,.97) 100%);border-bottom:1px solid var(--border)}
+.best-bets-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2.5px;color:var(--amber);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.best-bets-hd::after{content:'';flex:1;height:1px;background:linear-gradient(to right,rgba(245,158,11,.3),transparent)}
+.best-bets-grid{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.best-bets-grid::-webkit-scrollbar{display:none}
+.bb-card{flex-shrink:0;width:200px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 13px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.bb-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.bb-card.rank-1{border-color:rgba(245,158,11,.4);background:linear-gradient(135deg,rgba(245,158,11,.05),var(--card))}
+.bb-card.rank-2{border-color:rgba(148,163,184,.25)}
+.bb-card.rank-3{border-color:rgba(148,163,184,.15)}
+.bb-rank{position:absolute;top:9px;right:10px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:var(--muted)}
+.bb-rank.r1{color:var(--amber)}
+.bb-photo{width:36px;height:36px;border-radius:50%;background:var(--card2);border:2px solid var(--border);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.bb-photo img{width:100%;height:100%;object-fit:cover;object-position:top}
+.bb-top{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.bb-name{font-size:13px;font-weight:700;line-height:1.2}
+.bb-team{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+.bb-score{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;line-height:1}
+.bb-tier{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;display:inline-block;margin-top:1px}
+.bb-stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.bb-stat{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+.bb-stat .v{color:var(--sub);font-weight:700}
+.bb-reason{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:6px;line-height:1.5;border-top:1px solid var(--border);padding-top:5px}
 /* ── TOP PICKS STRIP ── */
 .picks-strip{border-bottom:1px solid var(--border);background:var(--surface);overflow:hidden;display:flex;align-items:center;height:52px;position:relative}
 .picks-strip-label{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);white-space:nowrap;padding:0 14px;border-right:1px solid var(--border);height:100%;display:flex;align-items:center;background:var(--surface);z-index:2;flex-shrink:0}
@@ -142,6 +166,21 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .cbdg.tot{background:rgba(139,92,246,.1);border-color:rgba(139,92,246,.3);color:var(--purple)}
 .cbdg.ump{background:var(--surface);border-color:var(--border);color:var(--muted)}
 .cbdg.tmp{background:var(--surface);border-color:var(--border);color:var(--sub)}
+.cbdg.stk{background:rgba(139,92,246,.12);border-color:rgba(139,92,246,.45);color:var(--purple);animation:pulse 1.8s ease-in-out infinite}
+.cbdg.tbd{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.4);color:var(--red)}
+/* trend arrows */
+.trend-up2{color:#10B981;font-size:10px;font-weight:700} .trend-up1{color:#34d399;font-size:10px}
+.trend-dn1{color:#F59E0B;font-size:10px} .trend-dn2{color:#EF4444;font-size:10px;font-weight:700}
+/* score tooltip redesign */
+.stip-bar-wrap{margin:2px 0 4px}
+.stip-bar-row{display:flex;align-items:center;gap:6px;padding:1.5px 0;font-family:'JetBrains Mono',monospace;font-size:8px}
+.stip-bar-lbl{color:var(--sub);width:90px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stip-bar-track{flex:1;height:4px;border-radius:2px;background:var(--border);position:relative;min-width:60px}
+.stip-bar-fill{height:100%;border-radius:2px;position:absolute;top:0}
+.stip-bar-fill.pos{background:var(--green)}
+.stip-bar-fill.neg{background:var(--red);right:0}
+.stip-bar-val{font-weight:700;width:24px;text-align:right;flex-shrink:0}
+.stip-bar-val.pos{color:var(--green)} .stip-bar-val.neg{color:var(--red)}
 /* PrizePicks badge */
 
 /* ── GAME DETAIL (expanded) ── */
@@ -467,6 +506,12 @@ table.pt th.c{text-align:center}
 <div class="accuracy-bar" id="accuracyBar">
   <span class="acc-label">Yesterday</span>
   <span id="accTiers"><span class="acc-tracking">TRACKING — check back tomorrow</span></span>
+</div>
+
+<!-- BEST BETS BANNER -->
+<div class="best-bets" id="bestBets" style="display:none">
+  <div class="best-bets-hd">TODAY'S BEST BETS</div>
+  <div class="best-bets-grid" id="bestBetsGrid"></div>
 </div>
 
 <!-- TOP PICKS STRIP -->
@@ -1053,7 +1098,13 @@ async function loadDay(dateObj) {
     setStatus('live','LIVE');
     document.getElementById('dataFooter').style.display = '';
     document.getElementById('footerTimestamp').textContent = `Updated ${new Date().toLocaleTimeString()}`;
-    expandedGames = new Set(); // collapsed by default — click SHOW MORE to expand
+    // Auto-expand the top 3 games by average player score
+    const gameScores = activeGames.map(g => ({
+      id: g.id,
+      avg: g.serverPlayers && g.serverPlayers.length
+        ? g.serverPlayers.reduce((s,p)=>s+(p.score||0),0) / g.serverPlayers.length : 0
+    })).sort((a,b)=>b.avg-a.avg);
+    expandedGames = new Set(gameScores.slice(0,3).map(x=>x.id));
     // Rebuild player lookup map for spray chart clicks
     playerMap = {};
     for (const g of activeGames) {
@@ -1153,6 +1204,7 @@ function buildPlayers(g) {
       isHome: sp.isHome||false, recentHR: sp.recentHR||0,
       recentHRPct: sp.recentHRPct||0, hotStreak: sp.hotStreak||false,
       hotMonth: sp.hotMonth||false, monthHRPct: sp.monthHRPct||0,
+      trend: sp.trend||0, recentHR7d: sp.recentHR7d||0, recentG7d: sp.recentG7d||0,
       oppBullpenEra: sp.oppBullpenEra||4.50,
       hpUmp: sp.hpUmp||'', umpScore: sp.umpScore||0,
       gameTotal: sp.gameTotal||0,
@@ -1173,7 +1225,66 @@ function buildPlayers(g) {
 // ═══════════════════════════════════════════════════
 // TOP PICKS
 // ═══════════════════════════════════════════════════
+function trendHtml(p) {
+  const t = p.trend || 0;
+  if (t >=  2) return `<span class="trend-up2" title="On fire — 7d HR rate 60%+ above 15d avg">▲▲</span>`;
+  if (t >=  1) return `<span class="trend-up1" title="Heating up — 7d HR rate above 15d avg">▲</span>`;
+  if (t <= -2) return `<span class="trend-dn2" title="Going cold — 7d HR rate 65%+ below 15d avg">▼▼</span>`;
+  if (t <= -1) return `<span class="trend-dn1" title="Cooling off — 7d HR rate below 15d avg">▼</span>`;
+  return '';
+}
+
+function renderBestBets() {
+  const banner = document.getElementById('bestBets');
+  const grid   = document.getElementById('bestBetsGrid');
+  if (!serverTop5.length) { banner.style.display = 'none'; return; }
+  const tierColor = {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--muted)'};
+  const top3 = serverTop5.slice(0, 3);
+  grid.innerHTML = top3.map((p, i) => {
+    const t     = p.tier || tierOf(p.score || 0);
+    const color = tierColor[t] || 'var(--sub)';
+    const photo = p.mlbId
+      ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">`
+      : '⚾';
+    const bd    = p.scoreBreakdown || {};
+    const reasons = [];
+    if (bd.vuln_p > 0)   reasons.push(`Weak starter`);
+    if (bd.wind > 2)     reasons.push(`Wind out`);
+    if (bd.park > 3)     reasons.push(`Hitter's park`);
+    if (bd.recency > 3)  reasons.push(`Hot streak`);
+    if (bd.platoon > 3)  reasons.push(`Platoon edge`);
+    if (bd.barrel > 6)   reasons.push(`Elite barrel%`);
+    if (bd.fatigue > 0)  reasons.push(`Tired pitcher`);
+    if (bd.h2h > 0)      reasons.push(`Owns this pitcher`);
+    const reasonStr = reasons.slice(0,3).join(' · ') || `${t}-tier projection`;
+    const trend = trendHtml(p);
+    return `<div class="bb-card rank-${i+1}" onclick="scrollToGame('${p.gameId||''}')">
+      <div class="bb-rank r${i===0?'1':''}">#${i+1}</div>
+      <div class="bb-top">
+        <div class="bb-photo">${photo}</div>
+        <div>
+          <div class="bb-name">${p.name} ${trend}</div>
+          <div class="bb-team">${p.team} · vs ${(p.pitcher||'').split(' ').pop()||'TBD'}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <div>
+          <div class="bb-score" style="color:${color}">${p.score}</div>
+          <span class="bb-tier t${t}" style="background:${color}18;color:${color};border:1px solid ${color}40">${t}-TIER</span>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${p.hrProb>=15?'var(--green)':p.hrProb>=8?'var(--amber)':'var(--sub)'}">${p.hrProb||0}%</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted)">HR PROB</div>
+        </div>
+      </div>
+      <div class="bb-reason">${reasonStr}</div>
+    </div>`;
+  }).join('');
+  banner.style.display = '';
+}
+
 function renderPicks() {
+  renderBestBets();
   if(!serverTop5.length){ document.getElementById('picksStrip').style.display='none'; return; }
   document.getElementById('picksStrip').style.display = '';
   const tierColor = {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--muted)'};
@@ -1193,7 +1304,6 @@ function renderPicks() {
     </div>`;
   };
   const cards = serverTop5.map((p,i) => card(p,i)).join('');
-  // Duplicate for seamless infinite scroll
   document.getElementById('picksRow').innerHTML = cards + cards;
 }
 
@@ -1268,6 +1378,13 @@ function renderGameCard(g) {
   const isExp = expandedGames.has(g.id);
   const wx = activeWX[g.id]||{};
   const arrow = isExp ? '▲' : '▼';
+  const stackBadge = g.isStack ? `<span class="cbdg stk">⚡ STACK ×${g.stackCount}</span>` : '';
+  const gameTotal = g.gameTotal > 0 ? `<span class="cbdg tot" title="Vegas game total">O/U ${g.gameTotal.toFixed(1)}</span>` : '';
+  // Lineup urgency: game within 60 min and has players without confirmed lineup
+  const hasUnconfirmed = allPlayers.some(p => !p.confirmed);
+  const lockBadge = lockBadgeHtml(g);
+  const urgencyBadge = (gameStartsWithin3Hours(g) && hasUnconfirmed && !g.status?.startsWith('I'))
+    ? `<span class="cbdg tbd" title="Lineup not yet confirmed">⚠ LINEUP TBD</span>` : '';
 
   return `<div class="game-card${isExp?' expanded':''}" id="gc-${g.id}">
     <div class="gc-head" onclick="toggleGame('${g.id}')">
@@ -1276,9 +1393,9 @@ function renderGameCard(g) {
           <div class="gc-matchup">${g.aw} <span style="color:var(--muted)">@</span> ${g.hm}</div>
           <div class="gc-meta">${g.time} · ${g.venue}</div>
         </div>
-        <div class="gc-hdr-conds">${condBadges(g)}</div>
+        <div class="gc-hdr-conds">${stackBadge}${gameTotal}${urgencyBadge}${condBadges(g)}</div>
         <div class="gc-toggle">
-          ${lockBadgeHtml(g)}
+          ${lockBadge}
           ${wx.dome?'<span class="gc-live">DOME</span>':''}
           <span>${arrow} ${isExp ? 'HIDE' : allPlayers.length + ' PLAYERS'}</span>
         </div>
@@ -1419,7 +1536,7 @@ function playerRow(p, g) {
     // Fallback: derive key components from data already on the client
     const platV = platAdj(p.bats, p.pitcher.h);
     const parkV = Math.round(((g.pf||100) - 100) / 50 * 12);
-    const barrelV = Math.round(Math.min(((p.barrel||0) - 8) * 0.7, 8));
+    const barrelV = Math.round(Math.min(((p.barrel||0) - 8) * 1.5, 14));
     const windV = (() => {
       const wx = activeWX[g.id]||{};
       if (wx.dome || !wx.wind_mph) return 0;
@@ -1435,10 +1552,26 @@ function playerRow(p, g) {
       barrelV!== 0 && { l: 'Barrel power', v: barrelV },
     ].filter(Boolean).filter(x => x.v !== 0);
   }
+  // Visual bar-based tooltip (top 4 drivers only)
+  const MAX_V = 16;
   const tipHtml = tipItems.length ? `<div class="score-tip">
-    <div class="stip-hd">Score Breakdown</div>
-    ${tipItems.map(x=>`<div class="stip-row"><span class="stip-lbl">${x.l}</span><span class="${x.v>0?'stip-pos':'stip-neg'}">${x.v>0?'+':''}${x.v}</span></div>`).join('')}
+    <div class="stip-hd">Score Drivers</div>
+    <div class="stip-bar-wrap">
+    ${tipItems.sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,5).map(x => {
+      const pos = x.v > 0;
+      const pct = Math.min(Math.abs(x.v) / MAX_V * 100, 100);
+      return `<div class="stip-bar-row">
+        <span class="stip-bar-lbl">${x.l}</span>
+        <div class="stip-bar-track"><div class="stip-bar-fill ${pos?'pos':'neg'}" style="width:${pct}%"></div></div>
+        <span class="stip-bar-val ${pos?'pos':'neg'}">${x.v>0?'+':''}${x.v}</span>
+      </div>`;
+    }).join('')}
+    </div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:4px;border-top:1px solid var(--border);padding-top:4px">Total score: ${p.score}/99</div>
   </div>` : '';
+
+  const trend = trendHtml(p);
+  const form7 = (p.recentG7d >= 3 && p.recentHR7d > 0) ? `· ${p.recentHR7d}HR/${p.recentG7d}G` : '';
 
   const sprayRowHtml = expandedPlayer === p.name ? buildSprayRow(p) : '';
   return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
@@ -1450,12 +1583,12 @@ function playerRow(p, g) {
   </td>
   <td class="td-player">
     <div class="p-name">
-      ${p.name}
+      ${p.name} ${trend}
       <span class="p-team">${p.team}</span>
       <span class="p-pos">${p.pos||'?'}</span>
       ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
     </div>
-    <div class="p-sub">Bats ${p.bats}${p.hotStreak?' · 🔥 HOT':''}${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}</div>
+    <div class="p-sub">Bats ${p.bats}${form7?`<span style="color:var(--amber);margin-left:4px">${form7}</span>`:''}${p.hotStreak?' · 🔥 HOT':''}${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}</div>
   </td>
   <td class="td-vs">
     <div class="vs-pitcher">vs ${p.pitcher.n}</div>
