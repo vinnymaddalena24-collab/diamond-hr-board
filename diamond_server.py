@@ -495,6 +495,13 @@ def fetch_batting_stats_savant():
                         row.get("anglesweetspotpercent") or row.get("sweet_spot_percent")),
                     "launch_angle":   _safe_float(
                         row.get("avg_hit_angle") or row.get("avg_launch_angle")),
+                    "fly_ball_pct":   _safe_float(
+                        row.get("flyballs_percent") or row.get("fly_ball_percent")
+                        or row.get("fb_percent") or row.get("flyballs")),
+                    "whiff_pct":      _safe_float(
+                        row.get("whiff_percent") or row.get("whiff")),
+                    "k_pct":          _safe_float(
+                        row.get("k_percent") or row.get("strikeout_percent")),
                     "xwoba": 0.0, "xslg": 0.0, "pull_pct": 40.0,
                 }
                 if pid: id_map[pid] = name
@@ -1543,6 +1550,8 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     sweet    = savant_stats.get("sweet_spot_pct", 36)
     pull_pct = savant_stats.get("pull_pct", 40)
     xwoba    = savant_stats.get("xwoba", 0)
+    fb_pct   = savant_stats.get("fly_ball_pct") or 0   # fly ball rate
+    whiff_pct = savant_stats.get("whiff_pct") or 0     # overall swing-and-miss rate
     bats     = batter_stats.get("bats", "R")
     ph       = pitcher_stats.get("hand", "R")
 
@@ -1587,6 +1596,12 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     profile += min((hard_hit - 40) * 0.20, 5)
     profile += min((iso - 0.180) * 18, 4)
     profile += min((sweet - 36) * 0.15, 2)
+    # Fly ball rate: more fly balls = more HR chances (league avg ~35%)
+    if fb_pct > 30:
+        profile += min((fb_pct - 30) * 0.30, 6)
+    # Whiff rate: high swing-and-miss = strikeout risk = ball never in play (league avg ~24%)
+    if whiff_pct > 24:
+        profile -= min((whiff_pct - 24) * 0.25, 6)
     if pa_per_g >= 4.5: profile += 3
     elif pa_per_g >= 4.2: profile += 2
     elif pa_per_g < 3.0: profile -= 2
@@ -1600,6 +1615,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     fb  = pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
+    k9  = pitcher_stats.get("k9", 8.5)
     pv  = 28 + (era - 3.5) * 5.5
     pv += (fb - 38) * 0.35
     if vel < 91: pv += 3
@@ -1626,6 +1642,9 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     situ += lineup_adj(lineup_pos)
     situ += ump_score * 2.5
     situ += game_total_adj(game_total)
+    # High-K pitcher reduces HR opportunities; fewer balls in play
+    if k9 > 9.0:
+        situ -= min((k9 - 9.0) * 1.2, 5)
     if bullpen_era >= 5.20:   situ += 4
     elif bullpen_era >= 4.80: situ += 2
     elif bullpen_era >= 4.50: situ += 1
@@ -1634,6 +1653,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus)))
 
     if explain:
+        k9_situ_pen = -round(min((k9 - 9.0) * 1.2, 5), 1) if k9 > 9.0 else 0
         breakdown = {
             "platoon": round(platoon_adj(bats, ph, batter_platoon)),
             "wind":    round(wind_adj(wx) * 0.70),
@@ -1646,6 +1666,9 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
             "fatigue": 7 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
             "barrel":  round(min((barrel - 8) * 1.5, 14)),
             "xwoba":   round(min((xwoba - 0.320) * 22, 8), 1) if xwoba > 0.320 else 0,
+            "flyball": round(min((fb_pct - 30) * 0.30, 6), 1) if fb_pct > 30 else 0,
+            "whiff":   -round(min((whiff_pct - 24) * 0.25, 6), 1) if whiff_pct > 24 else 0,
+            "kpitch":  k9_situ_pen,
         }
         return score, breakdown
     return score
@@ -2042,6 +2065,9 @@ def _do_build(date_str):
                 "xwOBA":            sav.get("xwoba", 0),
                 "sweetSpot":        sav.get("sweet_spot_pct", 0),
                 "pullPct":          sav.get("pull_pct", 0),
+                "flyBall":          round(sav.get("fly_ball_pct") or 0, 1),
+                "whiffPct":         round(sav.get("whiff_pct") or 0, 1),
+                "pitcherK9":        round(opp_pitcher.get("k9", 8.5), 1),
                 "pitcher":          opp_pitcher.get("name", "TBD"),
                 "pitcherEra":       opp_pitcher.get("era", 4.50),
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),
@@ -2250,6 +2276,8 @@ class Handler(BaseHTTPRequestHandler):
                         "avgEV":      round(sav.get("avg_ev", 0), 1),
                         "xwOBA":      round(sav.get("xwoba", 0), 3),
                         "sweetSpot":  round(sav.get("sweet_spot_pct", 0), 1),
+                        "flyBall":    round(sav.get("fly_ball_pct") or 0, 1),
+                        "whiffPct":   round(sav.get("whiff_pct") or 0, 1),
                         "onIL":        name in injuries,
                         "score":       score,
                         "tier":        get_tier(score),

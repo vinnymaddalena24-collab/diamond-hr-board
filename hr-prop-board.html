@@ -743,6 +743,11 @@ function computeEdges(p, g) {
   if(p.umpScore >= 1.0) edges.push({l:'UMP TIGHT', t:'pos'});
   // Barrel power
   if(p.barrel >= 15) edges.push({l:`${p.barrel.toFixed(0)}% BBL`, t:'dat'});
+  // Fly ball rate — positive HR indicator
+  if((p.flyBall||0) >= 42) edges.push({l:`${p.flyBall.toFixed(0)}% FB`, t:'dat'});
+  // K-risk: high whiff batter vs high K pitcher
+  const kRisk = (p.whiffPct||0) > 27 && (p.pitcherK9||0) > 10;
+  if(kRisk) edges.push({l:`⚠ K RISK`, t:'neg'});
   // Spray/park
   if(p.sprayAdj >= 4) edges.push({l:'🏟 PULL PARK', t:'pos'});
   // Pitch matchup top insight
@@ -823,6 +828,12 @@ function buildSprayInner(player, events, homeTeam) {
       <div class="spray-stat"><span class="v" style="color:${sc(player.hardHit,48,38)}">${player.hardHit.toFixed(0)}%</span><span class="l">HARD HIT</span></div>
       <div class="spray-stat"><span class="v">${player.avgEV>0?player.avgEV.toFixed(1)+'mph':'—'}</span><span class="l">AVG EV</span></div>
       <div class="spray-stat"><span class="v" style="color:${sc(player.xwOBA,.380,.320)}">${player.xwOBA>0?'.'+String(Math.round(player.xwOBA*1000)).padStart(3,'0'):'—'}</span><span class="l">xwOBA</span></div>
+    </div>
+    <div class="spray-stat-row">
+      <div class="spray-stat"><span class="v" style="color:${sc(player.flyBall||0,42,37)}">${(player.flyBall||0)>0?(player.flyBall||0).toFixed(0)+'%':'—'}</span><span class="l">FLY BALL</span></div>
+      <div class="spray-stat"><span class="v" style="color:${(player.whiffPct||0)>30?'var(--red)':(player.whiffPct||0)>26?'var(--amber)':'var(--sub)'}">${(player.whiffPct||0)>0?(player.whiffPct||0).toFixed(0)+'%':'—'}</span><span class="l">WHIFF%</span></div>
+      <div class="spray-stat"><span class="v" style="color:${sc(player.sweetSpot||0,40,36)}">${(player.sweetSpot||0)>0?(player.sweetSpot||0).toFixed(0)+'%':'—'}</span><span class="l">SWEET SPOT</span></div>
+      <div class="spray-stat"><span class="v" style="color:${(player.pitcherK9||0)>=11?'var(--red)':(player.pitcherK9||0)>=9.5?'var(--amber)':'inherit'}">${(player.pitcherK9||0)>0?(player.pitcherK9||0).toFixed(1):'—'}</span><span class="l">OPP K/9</span></div>
     </div>` : '';
   // ── Pitch matchup section ─────────────────────────────────────────────────
   const pitches = player.pitchMatchup || [];
@@ -1213,6 +1224,9 @@ function buildPlayers(g) {
       pitchMatchup: sp.pitchMatchup || [],
       sprayAdj:     sp.sprayAdj     || 0,
       scoreBreakdown: sp.scoreBreakdown || null,
+      flyBall:    sp.flyBall    || 0,
+      whiffPct:   sp.whiffPct   || 0,
+      pitcherK9:  sp.pitcherK9  || 0,
       platoon: platAdj(sp.bats||'R', pitcher.h),
       score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),
       gameId: g.id,
@@ -1531,6 +1545,9 @@ function playerRow(p, g) {
       bd.vuln_p          && {l: 'Pitcher danger', v: bd.vuln_p},
       bd.fatigue         && {l: 'Pitcher fatigued', v: bd.fatigue},
       bd.barrel          && {l: 'Barrel power', v: bd.barrel},
+      bd.flyball         && {l: 'Fly ball rate', v: bd.flyball},
+      bd.whiff           && {l: 'K-risk (whiff)', v: bd.whiff},
+      bd.kpitch          && {l: 'High-K pitcher', v: bd.kpitch},
     ].filter(Boolean).filter(x => x.v !== 0);
   } else {
     // Fallback: derive key components from data already on the client
@@ -1592,7 +1609,7 @@ function playerRow(p, g) {
   </td>
   <td class="td-vs">
     <div class="vs-pitcher">vs ${p.pitcher.n}</div>
-    <div class="vs-era" style="color:${['danger','mid','elite'].includes(eraClass(p.pitcher.era))?{danger:'var(--red)',mid:'var(--amber)',elite:'var(--green)'}[eraClass(p.pitcher.era)]:'var(--sub)'}">${p.pitcher.era.toFixed(2)} ERA · ${p.pitcher.h}HP</div>
+    <div class="vs-era" style="color:${['danger','mid','elite'].includes(eraClass(p.pitcher.era))?{danger:'var(--red)',mid:'var(--amber)',elite:'var(--green)'}[eraClass(p.pitcher.era)]:'var(--sub)'}">${p.pitcher.era.toFixed(2)} ERA · ${p.pitcher.h}HP${(p.pitcherK9||0)>0?` · <span style="color:${(p.pitcherK9||0)>=11?'var(--red)':(p.pitcherK9||0)>=9.5?'var(--amber)':'inherit'}">${(p.pitcherK9||0).toFixed(1)} K/9</span>`:''}</div>
     ${h2hHtml}
     ${p.pitchMatchup && p.pitchMatchup.length ? `
     <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;">
@@ -1611,6 +1628,7 @@ function playerRow(p, g) {
   <td class="td-num r">
     <span class="big${p.barrel>=14?' hi-green':p.barrel>=10?' hi-amber':''}">${p.barrel.toFixed(1)}</span>
     <span class="sml">BBL%</span>
+    ${(p.flyBall||0)>0?`<div style="margin-top:2px"><span class="sml" style="color:${(p.flyBall||0)>=42?'var(--green)':(p.flyBall||0)>=37?'var(--amber)':'var(--sub)'};font-weight:${(p.flyBall||0)>=37?'700':'400'}">${(p.flyBall||0).toFixed(0)}% FB</span></div>`:''}
   </td>
   <td class="td-edges">
     <div class="edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
