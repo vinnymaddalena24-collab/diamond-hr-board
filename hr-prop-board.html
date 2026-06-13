@@ -28,9 +28,10 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .hdr-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;display:none}
 @media(min-width:600px){.hdr-date{display:block}}
 .hdr-r{margin-left:auto;display:flex;align-items:center;gap:7px}
-.accuracy-bar{background:rgba(6,12,24,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:4px 20px;display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px;min-height:22px}
+.accuracy-bar{background:rgba(6,12,24,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:5px 20px;display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px;min-height:26px;flex-wrap:wrap}
 .accuracy-bar.hidden{display:none}
-.acc-label{color:var(--sub);text-transform:uppercase;margin-right:4px}
+.acc-label{color:var(--sub);text-transform:uppercase;margin-right:4px;white-space:nowrap}
+.acc-tracking{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:1px;padding:1px 7px;border:1px solid var(--border);border-radius:3px;white-space:nowrap}
 .acc-tier{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:3px}
 .acc-tier.S{background:rgba(251,191,36,.1);color:#fbbf24}
 .acc-tier.A{background:rgba(239,68,68,.1);color:var(--red)}
@@ -328,10 +329,21 @@ table.pt th.c{text-align:center}
 .ns-retry:hover{opacity:.85}
 
 /* ── LOADING / EMPTY ── */
-.loading-screen{display:flex;align-items:center;justify-content:center;gap:12px;padding:80px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px}
+.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:80px 20px;min-height:50vh;text-align:center}
+.loading-logo{width:52px;height:52px;background:linear-gradient(135deg,#3B82F6,#8B5CF6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:900;color:#fff;animation:lgPulse 1.8s ease-in-out infinite}
+@keyframes lgPulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,.4)}50%{box-shadow:0 0 0 10px rgba(59,130,246,0)}}
+.loading-title{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:3px;color:var(--text);text-transform:uppercase}
+.loading-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:1px}
+.build-steps{display:flex;flex-direction:column;gap:9px;text-align:left;min-width:200px}
+.bstep{display:flex;align-items:center;gap:9px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px}
+.bstep.done{color:var(--green)} .bstep.active{color:var(--blue)}
+.bstep-dot{width:7px;height:7px;border-radius:50%;background:var(--border2);flex-shrink:0;transition:background .3s}
+.bstep.done .bstep-dot{background:var(--green)} .bstep.active .bstep-dot{background:var(--blue);animation:bdotPulse 1s ease-in-out infinite}
+@keyframes bdotPulse{0%,100%{opacity:1}50%{opacity:.25}}
 .spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty-msg{text-align:center;padding:60px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:2px}
+.no-games-msg{text-align:center;padding:40px 20px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1.5px;border:1px dashed var(--border);border-radius:10px;margin:10px 0}
 
 /* ── DATA FOOTER ── */
 .data-footer{border-top:1px solid var(--border);padding:10px 20px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:.5px;display:flex;gap:16px;flex-wrap:wrap;background:var(--surface)}
@@ -418,8 +430,18 @@ table.pt th.c{text-align:center}
 
 @media(max-width:420px){
   .filter-bar .ftab{padding:5px 8px;font-size:8px}
-  .gc-hdr-conds{display:none} /* conditions hidden at tiny size, visible in expanded detail */
+  .gc-hdr-conds{display:none}
   .gc-toggle span{font-size:8px}
+  /* Tiny screens: show only photo, player, score */
+  table.pt th:nth-child(7),table.pt td:nth-child(7){display:none}
+  /* Stack pitcher pills */
+  .gc-pitchers-row{flex-direction:column}
+  /* Shrink score number */
+  .score-num{font-size:18px}
+  .p-photo,.p-photo-wrap{width:32px;height:32px}
+  .td-ph{width:42px}
+  /* Score tooltip on mobile: show on tap (active), position left so it doesn't clip */
+  .score-wrap:active .score-tip{display:block;left:auto;right:0}
 }
 </style>
 </head>
@@ -442,9 +464,9 @@ table.pt th.c{text-align:center}
     <button class="icon-btn" onclick="refreshData()" title="Refresh">↺ REFRESH</button>
   </div>
 </header>
-<div class="accuracy-bar hidden" id="accuracyBar">
+<div class="accuracy-bar" id="accuracyBar">
   <span class="acc-label">Yesterday</span>
-  <span id="accTiers"></span>
+  <span id="accTiers"><span class="acc-tracking">TRACKING — check back tomorrow</span></span>
 </div>
 
 <!-- TOP PICKS STRIP -->
@@ -966,9 +988,27 @@ function setStatus(cls, txt) {
   document.getElementById('statusTxt').textContent = txt;
 }
 
+let _buildRetry = 0;
+
+function buildingScreen() {
+  const steps = ['Schedule & Matchups','Season Statistics','Player Scoring','HR Projections'];
+  const active = Math.min(_buildRetry, steps.length - 1);
+  const rows = steps.map((s,i) => {
+    const cls = i < active ? 'done' : i === active ? 'active' : '';
+    const icon = i < active ? '✓' : i === active ? '●' : '○';
+    return `<div class="bstep ${cls}"><span class="bstep-dot"></span>${icon} ${s}</div>`;
+  }).join('');
+  return `<div class="loading-screen">
+    <div class="loading-logo">⬥</div>
+    <div class="loading-title">Building Projections</div>
+    <div class="loading-sub">First load takes 10–20s · data is live</div>
+    <div class="build-steps">${rows}</div>
+  </div>`;
+}
+
 async function loadDay(dateObj) {
   setStatus('loading','LOADING');
-  document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="spinner"></div>FETCHING LIVE DATA — ${displayDate(dateObj)}...</div>`;
+  document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="loading-logo">⬥</div><div class="loading-title">Fetching Live Data</div><div class="loading-sub">${displayDate(dateObj)}</div></div>`;
   document.getElementById('picksStrip').style.display = 'none';
   document.getElementById('injBar').innerHTML = '';
   document.getElementById('dataFooter').style.display = 'none';
@@ -980,10 +1020,12 @@ async function loadDay(dateObj) {
     if(!res.ok) throw new Error(`Server ${res.status}`);
     const data = await res.json();
     if (data.building) {
-      document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="spinner"></div>BUILDING PROJECTIONS — this takes ~15 seconds on first load...</div>`;
+      _buildRetry++;
+      document.getElementById('board').innerHTML = buildingScreen();
       setTimeout(() => loadDay(dateObj), 5000);
       return;
     }
+    _buildRetry = 0;
     serverTop5    = data.top5 || [];
     serverInjuries= data.injuryList || [];
     bustPlayersCache();
@@ -1071,9 +1113,8 @@ async function loadHistory(ds) {
 }
 
 function renderAccuracyBar(tiers, date) {
-  const bar = document.getElementById('accuracyBar');
-  const el  = document.getElementById('accTiers');
-  if (!tiers || !Object.keys(tiers).length) { bar.classList.add('hidden'); return; }
+  const el = document.getElementById('accTiers');
+  if (!tiers || !Object.keys(tiers).length) return; // leave "TRACKING" pill
   const order = ['S','A','B','C'];
   const parts = order
     .filter(t => tiers[t] && tiers[t].total > 0)
@@ -1082,9 +1123,9 @@ function renderAccuracyBar(tiers, date) {
       const pct = total ? Math.round(hit/total*100) : 0;
       return `<span class="acc-tier ${t}"><span class="acc-frac">${t} ${hit}/${total}</span> <span style="opacity:.6">${pct}%</span></span>`;
     });
-  if (!parts.length) { bar.classList.add('hidden'); return; }
-  el.innerHTML = parts.join(' · ');
-  bar.classList.remove('hidden');
+  if (!parts.length) return;
+  const d = date ? ` <span style="opacity:.45;margin-left:4px">${date}</span>` : '';
+  el.innerHTML = parts.join(' · ') + d;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1472,14 +1513,17 @@ function render() {
   if(isTargets) { renderTargetsPanel(); document.getElementById('board').innerHTML=''; return; }
 
   if(!activeGames.length) {
-    document.getElementById('board').innerHTML='<div class="empty-msg">NO GAMES FOUND FOR THIS DATE</div>';
+    document.getElementById('board').innerHTML='<div class="no-games-msg">NO GAMES SCHEDULED FOR THIS DATE</div>';
     return;
   }
 
   let html = '<div class="games-grid">';
   for(const g of activeGames) html += renderGameCard(g);
   html += '</div>';
-  document.getElementById('board').innerHTML = html || '<div class="empty-msg">NO GAMES MATCH CURRENT FILTER</div>';
+  if(html === '<div class="games-grid"></div>') {
+    html = '<div class="no-games-msg">NO PLAYERS MATCH THIS FILTER — TRY "ALL" TAB</div>';
+  }
+  document.getElementById('board').innerHTML = html;
 }
 
 function setSort(col) {
