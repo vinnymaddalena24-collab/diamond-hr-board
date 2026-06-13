@@ -1869,7 +1869,12 @@ def log_predictions(date_str, players):
             hist[date_str] = {
                 "players": [
                     {"name": p["name"], "team": p["team"],
-                     "score": p["score"], "tier": p["tier"]}
+                     "score": p["score"], "tier": p["tier"],
+                     "gameId": p.get("gameId", ""),
+                     "away": p.get("gameId", "").split("-")[0].upper() if p.get("gameId") else "",
+                     "home": p.get("gameId", "").split("-")[1].upper() if p.get("gameId") else "",
+                     "pitcher": p.get("pitcher", ""), "hr": p.get("HR", 0),
+                     "hrPct": p.get("hrPct", 0)}
                     for p in players
                 ]
             }
@@ -1919,6 +1924,7 @@ def calc_hit_rate(date_str):
     results = fetch_yesterday_hr_results(yesterday)
     tiers = {}
     graded = []
+    games_map = {}  # gameId → {away, home, players:[]}
     for p in entry["players"]:
         t = p["tier"]
         hit = p["name"] in results
@@ -1926,9 +1932,24 @@ def calc_hit_rate(date_str):
         tiers[t]["total"] += 1
         if hit:
             tiers[t]["hit"] += 1
-        graded.append({"name": p["name"], "team": p["team"], "tier": t, "score": p["score"], "hit": hit})
+        row = {"name": p["name"], "team": p["team"], "tier": t, "score": p["score"],
+               "hit": hit, "pitcher": p.get("pitcher",""), "hr": p.get("hr",0),
+               "hrPct": p.get("hrPct",0)}
+        graded.append(row)
+        gid = p.get("gameId", "")
+        if gid:
+            if gid not in games_map:
+                games_map[gid] = {
+                    "gameId": gid,
+                    "away": p.get("away", gid.split("-")[0].upper()),
+                    "home": p.get("home", gid.split("-")[1].upper()),
+                    "players": []
+                }
+            games_map[gid]["players"].append(row)
 
-    return {"date": yesterday, "tiers": tiers, "players": graded, "hasPredictions": True}
+    games = sorted(games_map.values(), key=lambda g: g["gameId"])
+    return {"date": yesterday, "tiers": tiers, "players": graded,
+            "games": games, "hasPredictions": True}
 
 
 def build_daily_data(date_str):

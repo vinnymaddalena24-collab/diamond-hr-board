@@ -28,16 +28,46 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .hdr-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;display:none}
 @media(min-width:600px){.hdr-date{display:block}}
 .hdr-r{margin-left:auto;display:flex;align-items:center;gap:7px}
-.accuracy-bar{background:rgba(6,12,24,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:5px 20px;display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:.5px;min-height:26px;flex-wrap:wrap}
-.accuracy-bar.hidden{display:none}
-.acc-label{color:var(--sub);text-transform:uppercase;margin-right:4px;white-space:nowrap}
-.acc-tracking{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:1px;padding:1px 7px;border:1px solid var(--border);border-radius:3px;white-space:nowrap}
+/* ── YESTERDAY TRACKING SECTION ── */
+.yt-bar{background:rgba(6,12,24,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace}
+.yt-bar-top{display:flex;align-items:center;gap:10px;padding:5px 20px;font-size:9px;color:var(--muted);letter-spacing:.5px;min-height:26px;flex-wrap:wrap;cursor:pointer;user-select:none}
+.yt-bar-top:hover .yt-label{color:var(--text)}
+.yt-label{color:var(--sub);text-transform:uppercase;font-weight:700;white-space:nowrap;font-size:8px;letter-spacing:1.5px}
+.acc-tracking{font-size:8px;color:var(--muted);letter-spacing:1px;padding:1px 7px;border:1px solid var(--border);border-radius:3px;white-space:nowrap}
 .acc-tier{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:3px}
 .acc-tier.S{background:rgba(251,191,36,.1);color:#fbbf24}
 .acc-tier.A{background:rgba(239,68,68,.1);color:var(--red)}
 .acc-tier.B{background:rgba(99,102,241,.1);color:#818cf8}
 .acc-tier.C{background:rgba(100,116,139,.1);color:var(--sub)}
 .acc-frac{font-size:9px;font-weight:700}
+/* Game selector strip */
+.yt-games{border-top:1px solid var(--border)}
+.yt-game-strip{display:flex;gap:8px;overflow-x:auto;padding:10px 16px 8px;scrollbar-width:none}
+.yt-game-strip::-webkit-scrollbar{display:none}
+.yt-gcard{flex-shrink:0;width:150px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 11px;cursor:pointer;transition:all .14s}
+.yt-gcard:hover{border-color:var(--border2);transform:translateY(-1px)}
+.yt-gcard.active{border-color:var(--blue);background:rgba(59,130,246,.07)}
+.yt-gcard-matchup{font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text);margin-bottom:3px}
+.yt-gcard-hr{font-size:8px;color:var(--green);font-weight:700}
+.yt-gcard-total{font-size:7px;color:var(--muted)}
+/* Game detail */
+.yt-detail{padding:8px 16px 12px}
+.yt-team-tabs{display:flex;gap:6px;margin-bottom:8px}
+.yt-ttab{font-size:8px;font-weight:700;letter-spacing:1px;padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .12s}
+.yt-ttab.on{border-color:var(--blue);background:rgba(59,130,246,.1);color:var(--blue)}
+.yt-players{display:flex;flex-direction:column;gap:3px}
+.yt-prow{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;background:var(--card);border:1px solid var(--border)}
+.yt-prow.hit{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.05)}
+.yt-pname{font-size:12px;font-weight:700;flex:1}
+.yt-ptier{font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px}
+.yt-ptier.S{background:rgba(251,191,36,.15);color:#fbbf24}
+.yt-ptier.A{background:rgba(239,68,68,.12);color:var(--red)}
+.yt-ptier.B{background:rgba(99,102,241,.1);color:#818cf8}
+.yt-ptier.C{background:rgba(100,116,139,.1);color:var(--sub)}
+.yt-pscore{font-size:11px;font-weight:700;width:28px;text-align:right;color:var(--sub)}
+.yt-phr{font-size:8px;font-weight:700;padding:2px 7px;border-radius:3px}
+.yt-phr.hit{background:rgba(16,185,129,.2);color:var(--green)}
+.yt-phr.miss{background:rgba(71,85,105,.15);color:var(--muted)}
 .p-hit-badge{font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px}
 .p-hit-badge.hit{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
 .p-hit-badge.miss{background:rgba(239,68,68,.08);color:rgba(239,68,68,.6);border:1px solid rgba(239,68,68,.2)}
@@ -563,9 +593,15 @@ table.pt th.c{text-align:center;padding:7px 6px}
     <button class="icon-btn" onclick="refreshData()" title="Refresh">↺ REFRESH</button>
   </div>
 </header>
-<div class="accuracy-bar" id="accuracyBar">
-  <span class="acc-label">Yesterday</span>
-  <span id="accTiers"><span class="acc-tracking">TRACKING — check back tomorrow</span></span>
+<div class="yt-bar" id="ytBar">
+  <div class="yt-bar-top" id="ytBarTop">
+    <span class="yt-label">YESTERDAY</span>
+    <span id="ytTiers"><span class="acc-tracking">TRACKING — check back tomorrow</span></span>
+  </div>
+  <div class="yt-games" id="ytGames" style="display:none">
+    <div class="yt-game-strip" id="ytGameStrip"></div>
+    <div class="yt-detail" id="ytDetail"></div>
+  </div>
 </div>
 
 <!-- BEST BETS BANNER -->
@@ -609,57 +645,6 @@ table.pt th.c{text-align:center;padding:7px 6px}
 
   </div>
 
-  <!-- MOB OVERLAY -->
-  <div class="mob-overlay" id="mobOverlay" onclick="closeMobSlip()"></div>
-
-  <!-- PARLAY SLIP (sidebar on desktop, bottom sheet on mobile) -->
-  <aside class="slip" id="slipPanel">
-    <div class="slip-handle"></div>
-    <div class="slip-hd">
-      <span class="slip-title">Parlay Slip</span>
-      <span class="slip-ct" id="slipCt">0</span>
-      <button class="slip-mob-close" onclick="closeMobSlip()">✕</button>
-    </div>
-
-    <!-- SLIP BOT -->
-    <div class="bot-wrap">
-      <div class="bot-label">⚡ QUICK BUILD</div>
-      <div class="bot-count-row">
-        <button class="bot-cnt" onclick="quickBuild(2)">2-MAN</button>
-        <button class="bot-cnt" onclick="quickBuild(3)">3-MAN</button>
-        <button class="bot-cnt" onclick="quickBuild(4)">4-MAN</button>
-      </div>
-      <div class="bot-label" style="margin-top:8px">MIN GRADE</div>
-      <div class="bot-grade-row">
-        <button class="bot-grade t-s" data-g="S" onclick="setBotGrade(this,'S')">S</button>
-        <button class="bot-grade t-a on" data-g="A" onclick="setBotGrade(this,'A')">A</button>
-        <button class="bot-grade t-b" data-g="B" onclick="setBotGrade(this,'B')">B</button>
-        <button class="bot-grade" data-g="any" onclick="setBotGrade(this,'any')">ANY</button>
-      </div>
-      <div class="bot-input-row">
-        <input id="botInput" class="bot-input" placeholder='e.g. "best 4 man A tier"' onkeydown="if(event.key==='Enter')botChat()">
-        <button class="bot-send" onclick="botChat()">→</button>
-      </div>
-      <div id="botMsg" class="bot-msg"></div>
-    </div>
-
-    <div class="slip-body" id="slipBody"></div>
-    <div class="slip-ft" id="slipFt" style="display:none">
-      <div class="slip-stat"><span>LEGS</span><span class="v" id="sfLegs">0</span></div>
-      <div class="slip-stat"><span>AVG COMPOSITE</span><span class="v" id="sfAvg">—</span></div>
-      <div class="slip-stat"><span>EST. ODDS</span></div>
-      <div class="slip-odds" id="sfOdds">+0</div>
-      <div class="slip-warn" id="sfWarn"></div>
-      <button class="slip-copy" id="slipCopyBtn" onclick="copySlip()">COPY SLIP</button>
-      <button class="slip-clear" onclick="clearSlip()">CLEAR ALL</button>
-    </div>
-  </aside>
-
-  <!-- FAB (mobile only) -->
-  <button class="slip-fab" id="slipFab" onclick="openMobSlip()" aria-label="Open parlay slip">
-    🎯
-    <span class="slip-fab-badge" id="fabBadge">0</span>
-  </button>
 </div>
 
 <!-- DATA FOOTER -->
@@ -686,7 +671,6 @@ const REFRESH_MS = 15 * 60 * 1000;
 let currentDate = new Date(); currentDate.setHours(0,0,0,0);
 let activeTab = 'all', searchQ = '';
 let expandedGames = new Set(); // all games expanded by default
-let legs = [];
 let activeGames = [], activeWX = {};
 let serverTop5 = [], serverInjuries = [];
 let sortCol = 'score', sortDir = 'desc';
@@ -1235,8 +1219,12 @@ function refreshData() {
   loadDay(currentDate);
 }
 
-// ── YESTERDAY'S HIT RATE ─────────────────────────────────────────────────────
+// ── YESTERDAY TRACKING ───────────────────────────────────────────────────────
 let yesterdayResults = {};  // name → true if they hit an HR yesterday
+let ytGames = [];           // game-grouped yesterday data
+let ytSelectedGame = null;  // currently expanded game
+let ytSelectedTeam = null;  // which team tab is active
+let ytExpanded = false;
 
 async function loadHistory(ds) {
   try {
@@ -1244,16 +1232,16 @@ async function loadHistory(ds) {
     if (!res.ok) return;
     const d = await res.json();
     if (!d.hasPredictions) return;
-    // Build lookup for player row badges
     yesterdayResults = {};
     for (const p of (d.players||[])) yesterdayResults[p.name] = p.hit;
-    renderAccuracyBar(d.tiers, d.date);
+    ytGames = d.games || [];
+    renderYesterdayBar(d.tiers, d.date, d.games || []);
   } catch(e) { /* history is best-effort */ }
 }
 
-function renderAccuracyBar(tiers, date) {
-  const el = document.getElementById('accTiers');
-  if (!tiers || !Object.keys(tiers).length) return; // leave "TRACKING" pill
+function renderYesterdayBar(tiers, date, games) {
+  const tiersEl = document.getElementById('ytTiers');
+  if (!tiers || !Object.keys(tiers).length) return;
   const order = ['S','A','B','C'];
   const parts = order
     .filter(t => tiers[t] && tiers[t].total > 0)
@@ -1262,9 +1250,79 @@ function renderAccuracyBar(tiers, date) {
       const pct = total ? Math.round(hit/total*100) : 0;
       return `<span class="acc-tier ${t}"><span class="acc-frac">${t} ${hit}/${total}</span> <span style="opacity:.6">${pct}%</span></span>`;
     });
-  if (!parts.length) return;
-  const d = date ? ` <span style="opacity:.45;margin-left:4px">${date}</span>` : '';
-  el.innerHTML = parts.join(' · ') + d;
+  const dateLabel = date ? `<span style="opacity:.4;margin-left:6px">${date}</span>` : '';
+  const chevron = `<span id="ytChevron" style="margin-left:auto;color:var(--muted);font-size:9px">${games.length ? '▼ GAMES' : ''}</span>`;
+  tiersEl.innerHTML = parts.join(' · ') + dateLabel;
+  // Attach click to top bar for expand/collapse
+  const top = document.getElementById('ytBarTop');
+  top.onclick = games.length ? toggleYtExpand : null;
+  if (games.length) top.title = 'Click to see yesterday\'s game results';
+}
+
+function toggleYtExpand() {
+  if (!ytGames.length) return;
+  ytExpanded = !ytExpanded;
+  const gamesEl = document.getElementById('ytGames');
+  gamesEl.style.display = ytExpanded ? '' : 'none';
+  if (ytExpanded) {
+    if (!ytSelectedGame && ytGames.length) ytSelectedGame = ytGames[0].gameId;
+    renderYtStrip();
+    renderYtDetail();
+  }
+}
+
+function renderYtStrip() {
+  const strip = document.getElementById('ytGameStrip');
+  strip.innerHTML = ytGames.map(g => {
+    const hrCount = g.players.filter(p => p.hit).length;
+    const active = g.gameId === ytSelectedGame ? ' active' : '';
+    return `<div class="yt-gcard${active}" onclick="selectYtGame('${g.gameId}')">
+      <div class="yt-gcard-matchup">${g.away} @ ${g.home}</div>
+      <div class="yt-gcard-hr">${hrCount > 0 ? `${hrCount} HR hit` : 'No HRs'}</div>
+      <div class="yt-gcard-total">${g.players.length} players tracked</div>
+    </div>`;
+  }).join('');
+}
+
+function selectYtGame(gameId) {
+  ytSelectedGame = gameId;
+  ytSelectedTeam = null;
+  renderYtStrip();
+  renderYtDetail();
+}
+
+function renderYtDetail() {
+  const el = document.getElementById('ytDetail');
+  const g = ytGames.find(x => x.gameId === ytSelectedGame);
+  if (!g) { el.innerHTML = ''; return; }
+
+  const teams = [...new Set(g.players.map(p => p.team))].sort();
+  if (!ytSelectedTeam || !teams.includes(ytSelectedTeam)) ytSelectedTeam = teams[0];
+
+  const tabsHtml = teams.map(t =>
+    `<button class="yt-ttab${t===ytSelectedTeam?' on':''}" onclick="selectYtTeam('${t}')">${t}</button>`
+  ).join('');
+
+  const players = g.players
+    .filter(p => p.team === ytSelectedTeam)
+    .sort((a,b) => b.score - a.score);
+
+  const rowsHtml = players.map(p => `
+    <div class="yt-prow${p.hit?' hit':''}">
+      <span class="yt-ptier ${p.tier}">${p.tier}</span>
+      <span class="yt-pname">${p.name}</span>
+      <span class="yt-pscore">${p.score}</span>
+      <span class="yt-phr ${p.hit?'hit':'miss'}">${p.hit ? '⚡ HR' : '✗'}</span>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="yt-team-tabs">${tabsHtml}</div>
+    <div class="yt-players">${rowsHtml || '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--muted);padding:8px 0">No players tracked for this team</div>'}</div>`;
+}
+
+function selectYtTeam(team) {
+  ytSelectedTeam = team;
+  renderYtDetail();
 }
 
 // ═══════════════════════════════════════════════════
@@ -1632,7 +1690,7 @@ function laCell(la) {
 }
 
 function playerRow(p, g) {
-  const sel = legs.find(l=>l.name===p.name);
+  const sel = false;
   const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
   const sc = scoreColor(p.tier);
   const edges = computeEdges(p, g);
@@ -1725,12 +1783,11 @@ function playerRow(p, g) {
     return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap">${m.name.split(' ')[0]} ${m.pct}%</span>`;
   }).join('') : '';
 
-  return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
-  <!-- Photo / parlay select -->
-  <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add to parlay slip" style="cursor:pointer">
+  return `<tr class="pr">
+  <!-- Photo -->
+  <td class="td-ph">
     <div class="p-photo-wrap">
-      <div class="p-photo" style="transition:border-color .12s;border-color:${sel?'var(--amber)':'var(--border)'}">⚾${photo}</div>
-      <div class="sel-dot"></div>
+      <div class="p-photo">⚾${photo}</div>
     </div>
   </td>
   <!-- Player cell: name + pitcher + edges -->
@@ -1984,216 +2041,10 @@ function selectPitcherGame(gameId) {
 }
 
 // ═══════════════════════════════════════════════════
-// PARLAY SLIP
+// ROW CLICK (no-op — parlay slip removed)
 // ═══════════════════════════════════════════════════
-function handleRowClick(el) {
-  try { toggleLeg(JSON.parse(el.dataset.leg)); } catch(e) {}
-}
-function handlePhotoClick(el, event) {
-  event.stopPropagation();
-  try { toggleLeg(JSON.parse(el.closest('tr').dataset.leg)); } catch(e) {}
-}
-// ═══════════════════════════════════════════════════
-// MOBILE SLIP SHEET
-// ═══════════════════════════════════════════════════
-function openMobSlip() {
-  document.getElementById('slipPanel').classList.add('mob-open');
-  document.getElementById('mobOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-function closeMobSlip() {
-  document.getElementById('slipPanel').classList.remove('mob-open');
-  document.getElementById('mobOverlay').classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-// Swipe-down to close the slip sheet
-(function() {
-  let startY = 0, dragging = false;
-  document.addEventListener('touchstart', e => {
-    const panel = document.getElementById('slipPanel');
-    if (!panel.classList.contains('mob-open')) return;
-    const handle = panel.querySelector('.slip-handle');
-    if (handle && handle.contains(e.target)) { startY = e.touches[0].clientY; dragging = true; }
-  }, {passive:true});
-  document.addEventListener('touchend', e => {
-    if (!dragging) return;
-    dragging = false;
-    if (e.changedTouches[0].clientY - startY > 60) closeMobSlip();
-  }, {passive:true});
-})();
-
-function toggleLeg(p) {
-  const idx = legs.findIndex(l=>l.name===p.name);
-  if(idx>=0) legs.splice(idx,1); else if(legs.length<6) legs.push(p);
-  renderSlip(); render();
-}
-function removeLeg(name) { legs=legs.filter(l=>l.name!==name); renderSlip(); render(); }
-function clearSlip() { legs=[]; renderSlip(); render(); }
-
-// ═══════════════════════════════════════════════════
-// SLIP BOT
-// ═══════════════════════════════════════════════════
-let botGrade = 'A';
-
-function setBotGrade(el, grade) {
-  botGrade = grade;
-  document.querySelectorAll('.bot-grade').forEach(b => b.classList.remove('on'));
-  el.classList.add('on');
-}
-
-function gradeMinScore(g) {
-  return {S:80, A:65, B:50, any:0}[g] ?? 0;
-}
-
-function botPlayerPool() {
-  return activeGames.flatMap(g => buildPlayers(g).map(p => ({
-    name: p.name, team: p.team, gameId: p.gameId,
-    score: p.score, tier: p.tier, pitcher: p.pitcher.n,
-    hrPct: p.hrPct, barrel: p.barrel, hrProb: p.hrProb||0
-  })));
-}
-
-function quickBuild(n) {
-  const min = gradeMinScore(botGrade);
-  let pool = botPlayerPool().filter(p => p.score >= min);
-  if (pool.length < n) {
-    botMsg(`Only ${pool.length} ${botGrade === 'any' ? '' : botGrade + '+ '}players available`, 'warn');
-    return;
-  }
-  // Shuffle then prefer one player per game to avoid same-game parlays
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  const picks = [], usedGames = new Set();
-  for (const p of shuffled) {
-    if (picks.length >= n) break;
-    if (!usedGames.has(p.gameId)) { picks.push(p); usedGames.add(p.gameId); }
-  }
-  // Fill remainder if we ran out of cross-game players
-  for (const p of shuffled) {
-    if (picks.length >= n) break;
-    if (!picks.find(x => x.name === p.name)) picks.push(p);
-  }
-  legs = picks.slice(0, n);
-  renderSlip(); render();
-  const label = botGrade === 'any' ? 'ANY' : botGrade + '+';
-  botMsg(`✓ ${n}-man ${label} slip built`);
-}
-
-function botMsg(text, type) {
-  const el = document.getElementById('botMsg');
-  if (!el) return;
-  el.textContent = text;
-  el.style.color = type === 'warn' ? 'var(--amber)' : 'var(--green)';
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.textContent = '', 3800);
-}
-
-function botChat() {
-  const inp = document.getElementById('botInput');
-  const q = (inp.value || '').trim().toLowerCase();
-  if (!q) return;
-  inp.value = '';
-
-  // Parse leg count
-  const numMap = {one:1,two:2,three:3,four:4,five:5,six:6};
-  let n = 3;
-  for (const [w,v] of Object.entries(numMap)) if (q.includes(w)) { n = v; break; }
-  const dm = q.match(/\b([2-6])\b/); if (dm) n = parseInt(dm[1]);
-  n = Math.max(2, Math.min(6, n));
-
-  // Parse grade
-  let grade = botGrade;
-  if (/\bs\b|s.tier|elite|s-tier/.test(q))       grade = 'S';
-  else if (/\ba\b|a.tier|a-tier/.test(q))          grade = 'A';
-  else if (/\bb\b|b.tier|b-tier/.test(q))          grade = 'B';
-  else if (/any|all|every/.test(q))                grade = 'any';
-
-  // Sync grade UI
-  botGrade = grade;
-  document.querySelectorAll('.bot-grade').forEach(b => b.classList.toggle('on', b.dataset.g === grade));
-
-  // "best/top" → sorted by score, not random
-  if (/best|top|highest|ranked/.test(q)) {
-    const min = gradeMinScore(grade);
-    const pool = botPlayerPool().filter(p => p.score >= min).sort((a,b) => b.score - a.score);
-    if (pool.length < n) { botMsg(`Only ${pool.length} players in that range`, 'warn'); return; }
-    // Dedupe by game
-    const picks = [], used = new Set();
-    for (const p of pool) {
-      if (picks.length >= n) break;
-      if (!used.has(p.gameId)) { picks.push(p); used.add(p.gameId); }
-    }
-    for (const p of pool) {
-      if (picks.length >= n) break;
-      if (!picks.find(x => x.name === p.name)) picks.push(p);
-    }
-    legs = picks.slice(0, n);
-    renderSlip(); render();
-    botMsg(`✓ Top ${n} ${grade === 'any' ? '' : grade + '+ '}players added`);
-    return;
-  }
-
-  quickBuild(n);
-}
-function renderSlip() {
-  const n = legs.length;
-  document.getElementById('slipCt').textContent = n;
-  // Sync FAB badge
-  const fab = document.getElementById('slipFab');
-  const badge = document.getElementById('fabBadge');
-  if (fab && badge) {
-    badge.textContent = n;
-    badge.style.display = n > 0 ? 'flex' : 'none';
-    fab.style.background = n > 0 ? 'var(--amber)' : 'var(--blue)';
-    fab.style.color = n > 0 ? '#000' : '#fff';
-  }
-  const bd = document.getElementById('slipBody');
-  if(!n){
-    bd.innerHTML='<div class="slip-empty">Click any player row<br>to add to slip.<br><br>Max 6 legs.<br>No same-game parlays.</div>';
-    document.getElementById('slipFt').style.display='none';
-    return;
-  }
-  bd.innerHTML = legs.map(l=>`<div class="slip-leg">
-    <div class="sl-info">
-      <div class="sl-name">${l.name}</div>
-      <div class="sl-sub">${l.team} · vs ${l.pitcher}</div>
-    </div>
-    <div class="sl-score">${l.score}</div>
-    <button class="sl-rm" onclick="removeLeg('${l.name.replace(/'/g,"\\'")}');event.stopPropagation()">✕</button>
-  </div>`).join('');
-  document.getElementById('slipFt').style.display='';
-  document.getElementById('sfLegs').textContent = n;
-  const avg = Math.round(legs.reduce((s,l)=>s+l.score,0)/n);
-  document.getElementById('sfAvg').textContent = avg+'/99';
-  const dec = legs.reduce((a,l)=>{ const imp=Math.max(.07,.26-(l.score-50)*.004); return a*(1/imp); },1);
-  document.getElementById('sfOdds').textContent = `+${Math.round((dec-1)*100).toLocaleString()}`;
-  const hasSGP = new Set(legs.map(l=>l.gameId)).size < n;
-  document.getElementById('sfWarn').textContent = hasSGP ? '⚠ Same-game legs detected' : '';
-  document.getElementById('slipCopyBtn').disabled = n < 2;
-}
-function copySlip() {
-  const tierEmoji = {S:'💎',A:'🔥',B:'⚡',C:'📊',D:'📉'};
-  const tierColor = {S:'S-TIER',A:'A-TIER',B:'B-TIER',C:'C-TIER',D:'D-TIER'};
-  const odds = document.getElementById('sfOdds').textContent;
-  const dateStr = displayDate(currentDate);
-  const lines = legs.map(l => {
-    const t = tierOf(l.score);
-    const emoji = tierEmoji[t] || '⚾';
-    const hrProb = l.hrProb > 0 ? ` · ${l.hrProb.toFixed(1)}% HR` : '';
-    return `${emoji} **${l.name}** (${l.team}) ${tierColor[t]} [${l.score}/99]\n   ↳ vs ${l.pitcher}${hrProb}`;
-  });
-  const txt = [
-    `⚾ **DIAMOND HR PARLAY** — ${dateStr}`,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    ...lines,
-    `━━━━━━━━━━━━━━━━━━━━`,
-    `📈 Est. Odds: **${odds}** · ${legs.length}-leg parlay`,
-    `_via DIAMOND prop board_`,
-  ].join('\n');
-  navigator.clipboard?.writeText(txt);
-  const b = document.getElementById('slipCopyBtn'); b.textContent='✓ COPIED';
-  setTimeout(()=>b.textContent='COPY SLIP', 2200);
-}
+function handleRowClick(el) {}
+function handlePhotoClick(el, event) { event.stopPropagation(); }
 
 
 
@@ -2223,7 +2074,6 @@ document.getElementById('filterBar').addEventListener('click', e => {
 // ═══════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════
-renderSlip();
 loadDay(currentDate);
 </script>
 </body>
