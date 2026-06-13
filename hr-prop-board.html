@@ -221,6 +221,11 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 
 /* ── GAME DETAIL (expanded) ── */
 .gc-detail{border-top:2px solid var(--blue);background:var(--surface)}
+.gc-team-tabs{display:flex;gap:0;padding:10px 16px 0;border-bottom:1px solid var(--border)}
+.gc-ttab{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;padding:7px 18px;border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:6px}
+.gc-ttab:hover{color:var(--text)}
+.gc-ttab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.gc-ttab-ct{font-size:8px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:0 5px;color:var(--muted)}
 .gcd-pitcher-strip{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .pitcher-detail-card{flex:1;min-width:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
 .pitcher-detail-card.danger{border-color:rgba(239,68,68,.3)} .pitcher-detail-card.elite{border-color:rgba(16,185,129,.3)}
@@ -1221,9 +1226,6 @@ function refreshData() {
 
 // ── YESTERDAY TRACKING ───────────────────────────────────────────────────────
 let yesterdayResults = {};  // name → true if they hit an HR yesterday
-let ytGames = [];           // game-grouped yesterday data
-let ytSelectedGame = null;  // currently expanded game
-let ytSelectedTeam = null;  // which team tab is active
 let ytExpanded = false;
 
 async function loadHistory(ds) {
@@ -1234,95 +1236,51 @@ async function loadHistory(ds) {
     if (!d.hasPredictions) return;
     yesterdayResults = {};
     for (const p of (d.players||[])) yesterdayResults[p.name] = p.hit;
-    ytGames = d.games || [];
-    renderYesterdayBar(d.tiers, d.date, d.games || []);
+    renderYesterdayBar(d);
   } catch(e) { /* history is best-effort */ }
 }
 
-function renderYesterdayBar(tiers, date, games) {
+function renderYesterdayBar(d) {
   const tiersEl = document.getElementById('ytTiers');
-  if (!tiers || !Object.keys(tiers).length) return;
-  const order = ['S','A','B','C'];
-  const parts = order
-    .filter(t => tiers[t] && tiers[t].total > 0)
-    .map(t => {
-      const {hit, total} = tiers[t];
-      const pct = total ? Math.round(hit/total*100) : 0;
-      return `<span class="acc-tier ${t}"><span class="acc-frac">${t} ${hit}/${total}</span> <span style="opacity:.6">${pct}%</span></span>`;
-    });
-  const dateLabel = date ? `<span style="opacity:.4;margin-left:6px">${date}</span>` : '';
-  const chevron = `<span id="ytChevron" style="margin-left:auto;color:var(--muted);font-size:9px">${games.length ? '▼ GAMES' : ''}</span>`;
-  tiersEl.innerHTML = parts.join(' · ') + dateLabel;
-  // Attach click to top bar for expand/collapse
+  const hit = d.hit || 0;
+  const total = d.total || 0;
+  if (!total) return;
+
+  // Score pill: "3/5 HIT" with color
+  const pct = Math.round(hit / total * 100);
+  const scoreColor = hit >= 3 ? 'var(--green)' : hit >= 2 ? 'var(--amber)' : 'var(--red)';
+  const scorePill = `<span style="font-weight:700;color:${scoreColor};font-size:11px">${hit}/${total}</span><span style="opacity:.5;margin-left:3px">HIT</span>`;
+  const dateLabel = d.date ? `<span style="opacity:.35;margin-left:8px">${d.date}</span>` : '';
+  tiersEl.innerHTML = scorePill + dateLabel;
+
+  // Expandable player list
   const top = document.getElementById('ytBarTop');
-  top.onclick = games.length ? toggleYtExpand : null;
-  if (games.length) top.title = 'Click to see yesterday\'s game results';
+  top.onclick = () => toggleYtExpand(d.players || []);
+  top.title = 'Click to see top 5 picks';
+  top.style.cursor = 'pointer';
 }
 
-function toggleYtExpand() {
-  if (!ytGames.length) return;
+let _ytPlayers = [];
+function toggleYtExpand(players) {
+  _ytPlayers = players || _ytPlayers;
   ytExpanded = !ytExpanded;
   const gamesEl = document.getElementById('ytGames');
   gamesEl.style.display = ytExpanded ? '' : 'none';
-  if (ytExpanded) {
-    if (!ytSelectedGame && ytGames.length) ytSelectedGame = ytGames[0].gameId;
-    renderYtStrip();
-    renderYtDetail();
-  }
+  if (ytExpanded) renderYtList();
 }
 
-function renderYtStrip() {
-  const strip = document.getElementById('ytGameStrip');
-  strip.innerHTML = ytGames.map(g => {
-    const hrCount = g.players.filter(p => p.hit).length;
-    const active = g.gameId === ytSelectedGame ? ' active' : '';
-    return `<div class="yt-gcard${active}" onclick="selectYtGame('${g.gameId}')">
-      <div class="yt-gcard-matchup">${g.away} @ ${g.home}</div>
-      <div class="yt-gcard-hr">${hrCount > 0 ? `${hrCount} HR hit` : 'No HRs'}</div>
-      <div class="yt-gcard-total">${g.players.length} players tracked</div>
-    </div>`;
-  }).join('');
-}
-
-function selectYtGame(gameId) {
-  ytSelectedGame = gameId;
-  ytSelectedTeam = null;
-  renderYtStrip();
-  renderYtDetail();
-}
-
-function renderYtDetail() {
+function renderYtList() {
+  // Reuse yt-detail for the flat player list
+  document.getElementById('ytGameStrip').style.display = 'none';
   const el = document.getElementById('ytDetail');
-  const g = ytGames.find(x => x.gameId === ytSelectedGame);
-  if (!g) { el.innerHTML = ''; return; }
-
-  const teams = [...new Set(g.players.map(p => p.team))].sort();
-  if (!ytSelectedTeam || !teams.includes(ytSelectedTeam)) ytSelectedTeam = teams[0];
-
-  const tabsHtml = teams.map(t =>
-    `<button class="yt-ttab${t===ytSelectedTeam?' on':''}" onclick="selectYtTeam('${t}')">${t}</button>`
-  ).join('');
-
-  const players = g.players
-    .filter(p => p.team === ytSelectedTeam)
-    .sort((a,b) => b.score - a.score);
-
-  const rowsHtml = players.map(p => `
+  const rows = _ytPlayers.map(p => `
     <div class="yt-prow${p.hit?' hit':''}">
       <span class="yt-ptier ${p.tier}">${p.tier}</span>
-      <span class="yt-pname">${p.name}</span>
+      <span class="yt-pname">${p.name} <span style="font-size:9px;color:var(--muted)">${p.team}</span></span>
       <span class="yt-pscore">${p.score}</span>
       <span class="yt-phr ${p.hit?'hit':'miss'}">${p.hit ? '⚡ HR' : '✗'}</span>
     </div>`).join('');
-
-  el.innerHTML = `
-    <div class="yt-team-tabs">${tabsHtml}</div>
-    <div class="yt-players">${rowsHtml || '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--muted);padding:8px 0">No players tracked for this team</div>'}</div>`;
-}
-
-function selectYtTeam(team) {
-  ytSelectedTeam = team;
-  renderYtDetail();
+  el.innerHTML = `<div class="yt-players">${rows}</div>`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1607,44 +1565,62 @@ function pitcherDetailCard(pitcher, teamAbbr) {
   </div>`;
 }
 
+// Per-game active team tab state
+const gameTeamTab = {};  // gameId → 'away' | 'home'
+
+function switchGameTeam(gameId, side, event) {
+  event.stopPropagation();
+  gameTeamTab[gameId] = side;
+  render();
+}
+
 function renderGameDetail(g, players) {
   const wx = activeWX[g.id]||{};
   const sp0 = g.serverPlayers && g.serverPlayers[0];
   const umpName = sp0 ? (sp0.hpUmp||'') : '';
 
-  // Group by team, each group sorted by active column
   const sortFn = (a,b) => {
     const col = sortCol||'score';
     const av = a[col]||0, bv = b[col]||0;
-    // SwStr% sorts ascending (lower = better) when sortDir='desc'
     const inv = col === 'whiffPct';
     const dir = sortDir==='asc' ? 1 : -1;
     return inv ? (av - bv) * dir : (bv - av) * dir;
   };
-  const byTeam = (abbr) => players.filter(p=>p.team===abbr).sort(sortFn);
-  const awayPlayers = byTeam(g.aw);
-  const homePlayers = byTeam(g.hm);
-  // Fallback: any players not matched to either abbr (edge case)
-  const matched = new Set([...awayPlayers, ...homePlayers].map(p=>p.name));
+
+  const awayPlayers = players.filter(p=>p.team===g.aw).sort(sortFn);
+  const homePlayers = players.filter(p=>p.team===g.hm).sort(sortFn);
+  const matched = new Set([...awayPlayers,...homePlayers].map(p=>p.name));
   const rest = players.filter(p=>!matched.has(p.name)).sort(sortFn);
 
-  let tableRows = '';
-  const teamSection = (abbr, teamPlayers) => {
-    if(!teamPlayers.length) return '';
-    const opp = abbr === g.aw ? g.hp : g.ap;
-    const oppName = opp ? opp.n : '?';
-    const oppEra  = opp ? opp.era.toFixed(2) : '?.??';
-    const oppK9   = opp && opp.k9 > 0 ? ` · ${opp.k9.toFixed(1)} K/9` : '';
-    const oppHand = opp ? ` · ${opp.h}HP` : '';
-    return `<tr class="section-row"><td colspan="12">${abbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`
-      + teamPlayers.map(p=>playerRow(p,g)).join('');
-  };
-  tableRows += teamSection(g.aw, awayPlayers);
-  tableRows += teamSection(g.hm, homePlayers);
-  if(rest.length) tableRows += teamSection('OTHER', rest);
+  // Determine active side
+  const activeSide = gameTeamTab[g.id] || 'away';
+  const activePlayers = activeSide === 'away' ? awayPlayers : homePlayers;
+  const activeAbbr = activeSide === 'away' ? g.aw : g.hm;
+  const opp = activeSide === 'away' ? g.hp : g.ap;
+  const oppName = opp ? opp.n : '?';
+  const oppEra  = opp ? opp.era.toFixed(2) : '?.??';
+  const oppK9   = opp && opp.k9 > 0 ? ` · ${opp.k9.toFixed(1)} K/9` : '';
+  const oppHand = opp ? ` · ${opp.h}HP` : '';
+
+  const awayCount = awayPlayers.length;
+  const homeCount = homePlayers.length;
+
+  const teamTabs = `<div class="gc-team-tabs">
+    <button class="gc-ttab${activeSide==='away'?' on':''}" onclick="switchGameTeam('${g.id}','away',event)">
+      ${g.aw} <span class="gc-ttab-ct">${awayCount}</span>
+    </button>
+    <button class="gc-ttab${activeSide==='home'?' on':''}" onclick="switchGameTeam('${g.id}','home',event)">
+      ${g.hm} <span class="gc-ttab-ct">${homeCount}</span>
+    </button>
+  </div>`;
+
+  const sectionHeader = `<tr class="section-row"><td colspan="12">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
+  const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
+    + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
 
   return `<div class="gc-detail">
-    ${umpName ? `<div style="padding:6px 16px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
+    ${teamTabs}
+    ${umpName ? `<div style="padding:0 16px 6px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
     <div class="pt-wrap">
       <table class="pt">
         <thead><tr>

@@ -1861,24 +1861,19 @@ def _save_history(data):
         json.dump(data, f)
 
 def log_predictions(date_str, players):
-    """Persist today's scored players so we can grade them tomorrow."""
+    """Persist today's top-5 scored players so we can grade them tomorrow."""
     with _history_lock:
         hist = _load_history()
-        # Only write once per date; don't overwrite an existing entry
         if date_str not in hist:
+            top5 = sorted(players, key=lambda p: p.get("score", 0), reverse=True)[:5]
             hist[date_str] = {
                 "players": [
                     {"name": p["name"], "team": p["team"],
                      "score": p["score"], "tier": p["tier"],
-                     "gameId": p.get("gameId", ""),
-                     "away": p.get("gameId", "").split("-")[0].upper() if p.get("gameId") else "",
-                     "home": p.get("gameId", "").split("-")[1].upper() if p.get("gameId") else "",
-                     "pitcher": p.get("pitcher", ""), "hr": p.get("HR", 0),
-                     "hrPct": p.get("hrPct", 0)}
-                    for p in players
+                     "pitcher": p.get("pitcher", ""), "hrPct": p.get("hrPct", 0)}
+                    for p in top5
                 ]
             }
-            # Keep at most 30 days of predictions
             if len(hist) > 30:
                 oldest = sorted(hist.keys())[0]
                 del hist[oldest]
@@ -1922,34 +1917,17 @@ def calc_hit_rate(date_str):
         return {"date": yesterday, "tiers": {}, "players": [], "hasPredictions": False}
 
     results = fetch_yesterday_hr_results(yesterday)
-    tiers = {}
     graded = []
-    games_map = {}  # gameId → {away, home, players:[]}
+    hit_count = 0
     for p in entry["players"]:
-        t = p["tier"]
         hit = p["name"] in results
-        tiers.setdefault(t, {"hit": 0, "total": 0})
-        tiers[t]["total"] += 1
-        if hit:
-            tiers[t]["hit"] += 1
-        row = {"name": p["name"], "team": p["team"], "tier": t, "score": p["score"],
-               "hit": hit, "pitcher": p.get("pitcher",""), "hr": p.get("hr",0),
-               "hrPct": p.get("hrPct",0)}
-        graded.append(row)
-        gid = p.get("gameId", "")
-        if gid:
-            if gid not in games_map:
-                games_map[gid] = {
-                    "gameId": gid,
-                    "away": p.get("away", gid.split("-")[0].upper()),
-                    "home": p.get("home", gid.split("-")[1].upper()),
-                    "players": []
-                }
-            games_map[gid]["players"].append(row)
+        if hit: hit_count += 1
+        graded.append({"name": p["name"], "team": p["team"],
+                       "tier": p["tier"], "score": p["score"],
+                       "pitcher": p.get("pitcher", ""), "hit": hit})
 
-    games = sorted(games_map.values(), key=lambda g: g["gameId"])
-    return {"date": yesterday, "tiers": tiers, "players": graded,
-            "games": games, "hasPredictions": True}
+    return {"date": yesterday, "hit": hit_count, "total": len(graded),
+            "players": graded, "hasPredictions": True}
 
 
 def build_daily_data(date_str):
@@ -2088,13 +2066,12 @@ def _do_build(date_str):
         pos = info.get("pos", "")
         if pid and pos not in ("P", "SP", "RP"):
             batter_ids.add(pid)
-    _lap(f"launching batter game logs for {len(batter_ids)} players")
-    _ex2 = concurrent.futures.ThreadPoolExecutor(max_workers=30)
-    f_bgl = {pid: _ex2.submit(fetch_batter_game_log, pid) for pid in batter_ids}
-    concurrent.futures.wait(list(f_bgl.values()), timeout=25)
-    _ex2.shutdown(wait=False)
-    batter_glogs = {pid: (f.result(timeout=0) if f.done() else {}) for pid, f in f_bgl.items()}
-    _lap(f"batter game logs done — {sum(1 for v in batter_glogs.values() if v)} loaded")
+    # Batter game logs run in background (daemon) — serve from cache, populate for next request
+    uncached = [pid for pid in batter_ids if not cache_get(f"bgl_{pid}")]
+    for pid in uncached:
+        threading.Thread(target=fetch_batter_game_log, args=(pid,), daemon=True).start()
+    batter_glogs = {pid: cache_get(f"bgl_{pid}") or {} for pid in batter_ids}
+    _lap(f"batter game logs: {len(batter_ids)-len(uncached)} cached, {len(uncached)} fetching in bg")
 
     # ── Step 4: Assign pre-fetched data to games (zero network calls) ─────────
     for g in games:
