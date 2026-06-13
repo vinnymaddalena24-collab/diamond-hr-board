@@ -820,7 +820,7 @@ def fetch_batter_game_log(player_id):
             "pctAfter1Hit":  round(after_1hit  / total_hr_games * 100) if total_hr_games > 0 else 0,
             "pctAfterMulti": round(after_multi  / total_hr_games * 100) if total_hr_games > 0 else 0,
         }
-        cache_set(f"bgl_{player_id}", result, ttl=3600)
+        cache_set(f"bgl_{player_id}", result)
         return result
     except Exception as e:
         print(f"[bgl {player_id}] Error: {e}")
@@ -2058,20 +2058,19 @@ def _do_build(date_str):
     batter_pitch_data = safe(f_b_pitch)
     _, et_hour = get_today_str()
 
-    # ── Step 3b: Batter game logs (second wave — needs roster IDs from phase 1) ─
-    # Extract all unique batter IDs from the resolved roster data
+    # ── Step 3b: Batter game logs (only non-pitchers on today's teams, background daemon) ─
     batter_ids = set()
     for name, info in rosters.items():
-        pid = info.get("id")
-        pos = info.get("pos", "")
-        if pid and pos not in ("P", "SP", "RP"):
-            batter_ids.add(pid)
-    # Batter game logs run in background (daemon) — serve from cache, populate for next request
+        if info.get("team") in all_game_teams and info.get("pos", "") not in ("P", "SP", "RP"):
+            pid = info.get("id")
+            if pid:
+                batter_ids.add(pid)
+    # Batter game logs — serve from cache; fire up to 60 background threads per build
     uncached = [pid for pid in batter_ids if not cache_get(f"bgl_{pid}")]
-    for pid in uncached:
+    for pid in uncached[:60]:
         threading.Thread(target=fetch_batter_game_log, args=(pid,), daemon=True).start()
     batter_glogs = {pid: cache_get(f"bgl_{pid}") or {} for pid in batter_ids}
-    _lap(f"batter game logs: {len(batter_ids)-len(uncached)} cached, {len(uncached)} fetching in bg")
+    _lap(f"batter game logs: {len(batter_ids)-len(uncached)} cached, launching {min(len(uncached),60)} bg threads")
 
     # ── Step 4: Assign pre-fetched data to games (zero network calls) ─────────
     for g in games:
