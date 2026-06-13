@@ -935,26 +935,45 @@ def fetch_team_bullpen_era():
         return {}
 
 def fetch_pitcher_savant_allowed():
-    """Pitcher Statcast allowed stats: barrel% and hard hit% against."""
+    """Pitcher Statcast allowed stats: contact quality + xwOBA/xERA against."""
     import csv as _csv, io as _io
     cached = cache_get("pitcher_savant_allowed", ttl=SPLITS_TTL)
     if cached: return cached
-    url = ("https://baseballsavant.mlb.com/leaderboard/statcast"
-           "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
+    url_contact = ("https://baseballsavant.mlb.com/leaderboard/statcast"
+                   "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
+    url_xstats  = ("https://baseballsavant.mlb.com/leaderboard/expected_statistics"
+                   "?type=pitcher&year=2026&position=&team=&min=25&csv=true")
     try:
-        raw = fetch_savant(url).lstrip("﻿")
-        result = {}
-        for row in _csv.DictReader(_io.StringIO(raw)):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f1 = ex.submit(fetch_savant, url_contact, 8)
+            f2 = ex.submit(fetch_savant, url_xstats,  8)
+        result, id_map = {}, {}
+        for row in _csv.DictReader(_io.StringIO(f1.result().lstrip("﻿"))):
             name = _savant_name(row)
+            pid  = row.get("player_id", "").strip()
             if not name: continue
             try:
                 result[name] = {
-                    "barrel_allowed":   _safe_float(row.get("brl_percent") or row.get("brl_pa")),
-                    "hard_hit_allowed": _safe_float(row.get("ev95percent")),
-                    "xwoba_against":    0.0,
-                    "xslg_against":     0.0,
+                    "barrel_allowed":    _safe_float(row.get("brl_percent") or row.get("brl_pa")),
+                    "hard_hit_allowed":  _safe_float(row.get("ev95percent")),
+                    "avg_ev_against":    _safe_float(row.get("avg_hit_speed")),
+                    "sweet_spot_against":_safe_float(row.get("anglesweetspotpercent")),
+                    "avg_la_against":    _safe_float(row.get("avg_hit_angle")),
+                    "xwoba_against":     0.0,
+                    "xera":              0.0,
                 }
+                if pid: id_map[pid] = name
             except: continue
+        try:
+            for row in _csv.DictReader(_io.StringIO(f2.result().lstrip("﻿"))):
+                name = _savant_name(row)
+                pid  = row.get("player_id", "").strip()
+                key  = name if name in result else id_map.get(pid)
+                if key:
+                    result[key]["xwoba_against"] = _safe_float(row.get("est_woba"))
+                    result[key]["xera"]           = _safe_float(row.get("xera"))
+        except Exception as e:
+            print(f"[pitcher_xstats] Error: {e}")
         cache_set("pitcher_savant_allowed", result)
         print(f"[pitcher_sav] Loaded {len(result)} pitchers")
         return result
@@ -1123,12 +1142,13 @@ def fetch_pitcher_arsenal():
                     "name":           row.get("pitch_name", PITCH_TYPE_NAMES.get(pt, pt)),
                     "pct":            _safe_float(row.get("pitch_usage") or row.get("pitch_percent") or 0),
                     "pa":             int(row.get("pa", 0) or 0),
-                    "ba_against":     _safe_float(row.get("ba")),
-                    "xslg_against":   _safe_float(row.get("est_slg")),
+                    "pitches":        int(row.get("pitches", 0) or 0),
+                    "xwoba_against":  _safe_float(row.get("est_woba")),
                     "hard_hit_allow": _safe_float(row.get("hard_hit_percent")),
                     "whiff_pct":      _safe_float(row.get("whiff_percent")),
+                    "k_pct":          _safe_float(row.get("k_percent")),
+                    "put_away":       _safe_float(row.get("put_away")),
                     "run_val_100":    _safe_float(row.get("run_value_per_100")),
-                    "velocity":       _safe_float(row.get("avg_speed") or row.get("avg_velocity") or 0),
                 }
             except: continue
         cache_set("pitcher_arsenal", result)
@@ -1869,10 +1889,8 @@ def _do_build(date_str):
     def _bg(*fns):
         for fn in fns:
             threading.Thread(target=fn, daemon=True).start()
-    if not cache_get("sprint_speed"):     _bg(fetch_sprint_speed)
-    if not cache_get("pitcher_arsenal"):  _bg(fetch_pitcher_arsenal)
+    if not cache_get("sprint_speed"):       _bg(fetch_sprint_speed)
     if not cache_get("batter_pitch_stats"): _bg(fetch_batter_pitch_stats)
-    if not cache_get("pitcher_savant_allowed"): _bg(fetch_pitcher_savant_allowed)
 
     # ── Step 3: Fetch core data in parallel — all MLB Stats API (fast, reliable) ──
     _ex = concurrent.futures.ThreadPoolExecutor(max_workers=22)
@@ -1888,17 +1906,18 @@ def _do_build(date_str):
     f_monthly  = _ex.submit(fetch_monthly_batting)
     f_platoon  = _ex.submit(fetch_platoon_splits)
     f_bullpen  = _ex.submit(fetch_team_bullpen_era)
-    f_psav     = _ex.submit(lambda: cache_get("pitcher_savant_allowed") or {})
-    f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
-    f_sprint   = _ex.submit(lambda: cache_get("sprint_speed") or {})
-    f_totals   = _ex.submit(fetch_game_totals, date_str)
-    f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
-    f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
+    # pitcher_savant_allowed + pitcher_arsenal run as real futures so they complete before build
+    f_psav      = _ex.submit(lambda: cache_get("pitcher_savant_allowed") or fetch_pitcher_savant_allowed())
+    f_p_arsenal = _ex.submit(lambda: cache_get("pitcher_arsenal") or fetch_pitcher_arsenal())
+    f_ump_live  = _ex.submit(fetch_ump_zone_live, date_str)
+    f_sprint    = _ex.submit(lambda: cache_get("sprint_speed") or {})
+    f_totals    = _ex.submit(fetch_game_totals, date_str)
+    f_p_stats   = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
+    f_p_logs    = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
     f_wx = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
     f_pitcher_details = _ex.submit(fetch_pitcher_details_batch, list(pitcher_ids))
     f_active = {team: _ex.submit(fetch_active_roster_single, team) for team in all_game_teams}
     f_h2h    = {pid: _ex.submit(fetch_h2h_vs_pitcher, pid) for pid in pitcher_ids}
-    f_p_arsenal = _ex.submit(lambda: cache_get("pitcher_arsenal") or {})
     f_b_pitch   = _ex.submit(lambda: cache_get("batter_pitch_stats") or {})
     _all = ([f_batting,f_recent,f_recent7,f_savant,f_40man,f_rosters,f_injuries,f_homeaway,
              f_monthly,f_platoon,f_bullpen,f_psav,f_ump_live,f_sprint,f_totals,
@@ -1956,10 +1975,20 @@ def _do_build(date_str):
             stats = pitcher_stats.get(pid, {})
             plog  = pitcher_logs.get(pid, {})
             psav  = pitcher_sav_map.get(name, {})
+            ars   = pitcher_arsenal.get(name, {})
             g[side].update(stats)
-            g[side]["_log"]  = plog
-            g[side]["_psav"] = psav
-            g[side]["starts"] = plog.get("starts", [])   # real per-start lines
+            g[side]["_log"]    = plog
+            g[side]["_psav"]   = psav
+            g[side]["arsenal"] = ars          # pitch-type breakdown for Pitchers tab
+            g[side]["starts"]  = plog.get("starts", [])
+            # Flatten savant allowed stats directly onto pitcher for easy JS access
+            if psav:
+                g[side]["xwoba_against"]      = psav.get("xwoba_against", 0)
+                g[side]["xera"]               = psav.get("xera", 0)
+                g[side]["barrel_allowed"]     = psav.get("barrel_allowed", 0)
+                g[side]["hard_hit_allowed"]   = psav.get("hard_hit_allowed", 0)
+                g[side]["avg_ev_against"]     = psav.get("avg_ev_against", 0)
+                g[side]["sweet_spot_against"] = psav.get("sweet_spot_against", 0)
             if not stats:
                 g[side].update({"era": 4.50, "quality": "mid", "fbPct": 38, "vel": 92.5})
             # Apply correct throwing hand from MLB people API
