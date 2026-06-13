@@ -33,7 +33,7 @@ ROSTER_TTL   = 600   # 10 minutes — rosters + injuries
 SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 HISTORY_FILE = os.environ.get("HISTORY_PATH", os.path.join("/tmp", "diamond_history.json"))
 API_TIMEOUT  = 6     # seconds — hard cap on all external API calls
-BATCH_TIMEOUT = 22   # seconds — wall-clock cap on the parallel build batch
+BATCH_TIMEOUT = 45   # seconds — wall-clock cap on the parallel build batch
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -664,7 +664,11 @@ def fetch_batting_season_stats():
             hr = int(stat.get("homeRuns", 0) or 0)
             avg = _safe_float(stat.get("avg"))
             slg = _safe_float(stat.get("slg"))
-            pa_raw = int(stat.get("plateAppearances", 0) or 0)
+            pa_raw   = int(stat.get("plateAppearances", 0) or 0)
+            air_outs = int(stat.get("airOuts", 0) or 0)
+            gnd_outs = int(stat.get("groundOuts", 0) or 0)
+            total_bo = air_outs + gnd_outs
+            fb_proxy = round(air_outs / total_bo * 100, 1) if total_bo > 0 else 0
             result[name] = {
                 "G": g,
                 "HR": hr,
@@ -677,6 +681,7 @@ def fetch_batting_season_stats():
                 "paPerG": round(pa_raw / g, 1) if g > 0 else 3.8,
                 "PA": pa_raw,
                 "SO": int(stat.get("strikeOuts", 0) or 0),
+                "airOutPct": fb_proxy,
             }
 
         cache_set("batting_stats", result)
@@ -1553,7 +1558,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     sweet    = savant_stats.get("sweet_spot_pct", 36)
     pull_pct = savant_stats.get("pull_pct", 40)
     xwoba    = savant_stats.get("xwoba", 0)
-    fb_pct   = savant_stats.get("fly_ball_pct") or 0   # fly ball rate
+    fb_pct   = savant_stats.get("fly_ball_pct") or batter_stats.get("airOutPct") or 0
     whiff_pct = savant_stats.get("whiff_pct") or 0     # overall swing-and-miss rate
     bats     = batter_stats.get("bats", "R")
     ph       = pitcher_stats.get("hand", "R")
@@ -1864,18 +1869,18 @@ def _do_build(date_str):
     def _bg(*fns):
         for fn in fns:
             threading.Thread(target=fn, daemon=True).start()
-    if not cache_get("savant_batting"):   _bg(fetch_batting_stats_savant)
     if not cache_get("sprint_speed"):     _bg(fetch_sprint_speed)
     if not cache_get("pitcher_arsenal"):  _bg(fetch_pitcher_arsenal)
     if not cache_get("batter_pitch_stats"): _bg(fetch_batter_pitch_stats)
     if not cache_get("pitcher_savant_allowed"): _bg(fetch_pitcher_savant_allowed)
 
     # ── Step 3: Fetch core data in parallel — all MLB Stats API (fast, reliable) ──
-    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+    _ex = concurrent.futures.ThreadPoolExecutor(max_workers=22)
     f_batting  = _ex.submit(fetch_batting_season_stats)
     f_recent   = _ex.submit(fetch_recent_batting_stats, 15)
     f_recent7  = _ex.submit(fetch_recent_batting_stats, 7)
-    f_savant   = _ex.submit(lambda: cache_get("savant_batting") or {})
+    # savant runs as a real future so wait() guarantees it completes before we build
+    f_savant   = _ex.submit(lambda: cache_get("savant_batting") or fetch_batting_stats_savant())
     f_40man    = _ex.submit(fetch_40man_roster)
     f_rosters  = _ex.submit(fetch_active_rosters)
     f_injuries = _ex.submit(fetch_injuries)
@@ -2076,7 +2081,7 @@ def _do_build(date_str):
                 "xwOBA":            sav.get("xwoba", 0),
                 "sweetSpot":        sav.get("sweet_spot_pct", 0),
                 "pullPct":          sav.get("pull_pct", 0),
-                "flyBall":          round(sav.get("fly_ball_pct") or 0, 1),
+                "flyBall":          round(sav.get("fly_ball_pct") or bat_stat.get("airOutPct") or 0, 1),
                 "whiffPct":         round(sav.get("whiff_pct") or 0, 1),
                 "la":               round(sav.get("launch_angle") or 0, 1),
                 "pitcherK9":        round(opp_pitcher.get("k9", 8.5), 1),
@@ -2289,7 +2294,7 @@ class Handler(BaseHTTPRequestHandler):
                         "avgEV":      round(sav.get("avg_ev", 0), 1),
                         "xwOBA":      round(sav.get("xwoba", 0), 3),
                         "sweetSpot":  round(sav.get("sweet_spot_pct", 0), 1),
-                        "flyBall":    round(sav.get("fly_ball_pct") or 0, 1),
+                        "flyBall":    round(sav.get("fly_ball_pct") or bat_stat.get("airOutPct") or 0, 1),
                         "whiffPct":   round(sav.get("whiff_pct") or 0, 1),
                         "onIL":        name in injuries,
                         "score":       score,
