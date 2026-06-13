@@ -161,6 +161,12 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .layout{display:flex;min-height:calc(100vh - 56px)}
 .main-col{flex:1;min-width:0;padding:14px 20px}
 .games-grid{display:flex;flex-direction:column;gap:10px;max-width:960px}
+/* Board detail (strip → detail layout) */
+.bd-wrap{padding:12px 0 0;max-width:960px}
+.bd-game-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.bd-matchup{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;letter-spacing:1px}
+.bd-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--sub)}
+.bd-badges{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-left:auto}
 
 /* ── GAME CARD ── */
 .game-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:border-color .15s}
@@ -539,10 +545,12 @@ table.pt th.c{text-align:center;padding:7px 6px}
   /* Better touch targets for filter tabs */
   .ftab{min-height:36px;padding:6px 11px;display:inline-flex;align-items:center}
   .dbtn{width:32px;height:32px}
-  /* Game card */
-  .gc-matchup{font-size:15px}
-  .gc-meta{font-size:8px}
+  /* Game card / board detail header */
+  .gc-matchup,.bd-matchup{font-size:15px}
+  .gc-meta,.bd-meta{font-size:8px}
   .gc-head{padding:10px 14px 8px}
+  .bd-wrap{padding:10px 0 0}
+  .bd-game-hd{gap:6px;margin-bottom:8px;padding-bottom:8px}
   /* Table compression */
   .kst{padding:5px 5px;min-width:44px;font-size:11px}
   /* Pitcher detail cards stack */
@@ -566,6 +574,8 @@ table.pt th.c{text-align:center;padding:7px 6px}
   /* Filter bar */
   .ftab{padding:6px 9px;font-size:8px}
   .fb-search{width:90px;font-size:8px}
+  .bd-matchup{font-size:13px}
+  .bd-badges{margin-left:0}
   /* Pitcher matchup cards tighter */
   .gc-pm-card{padding:8px 10px}
   .gc-pm-name{font-size:12px}
@@ -1874,13 +1884,77 @@ function render() {
     return;
   }
 
-  let html = '<div class="games-grid">';
-  for(const g of activeGames) html += renderGameCard(g);
-  html += '</div>';
-  if(html === '<div class="games-grid"></div>') {
-    html = '<div class="no-games-msg">NO PLAYERS MATCH THIS FILTER — TRY "ALL" TAB</div>';
+  renderBoardWithStrip();
+}
+
+function filterPlayers(players) {
+  let f = [...players];
+  if(activeTab==='stars')   f = f.filter(p=>p.score>=80);
+  if(activeTab==='good')    f = f.filter(p=>p.score>=65);
+  if(activeTab==='hot')     f = f.filter(p=>p.hotStreak);
+  if(activeTab==='platoon') f = f.filter(p=>p.platoon>=8);
+  if(searchQ){ const q=searchQ.toLowerCase(); f=f.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q)); }
+  return f;
+}
+
+function renderBoardWithStrip() {
+  const eraC = era => era<=3.5?'good':era>=4.5?'bad':'mid';
+
+  // Only include games with qualifying players (for filter tabs)
+  const qualifyingGames = activeGames.filter(g => {
+    if(activeTab==='soon' && !gameStartsWithin3Hours(g)) return false;
+    if(activeTab==='all' || activeTab==='soon') return true;
+    return filterPlayers(buildPlayers(g)).length > 0;
+  });
+
+  if(!qualifyingGames.length) {
+    document.getElementById('board').innerHTML='<div class="no-games-msg">NO PLAYERS MATCH THIS FILTER — TRY "ALL" TAB</div>';
+    return;
   }
-  document.getElementById('board').innerHTML = html;
+
+  // Reset selection if stale
+  if(!selectedBoardGame || !qualifyingGames.find(g=>g.id===selectedBoardGame)) {
+    selectedBoardGame = qualifyingGames[0].id;
+  }
+
+  const stripHtml = qualifyingGames.map(g => {
+    const ap=g.ap||{}, hp=g.hp||{};
+    const active = g.id===selectedBoardGame ? ' active' : '';
+    return `<div class="pm-card${active}" onclick="selectBoardGame('${g.id}')">
+      <div class="pm-matchup">${g.aw} @ ${g.hm}</div>
+      <div class="pm-time">${g.time}</div>
+      <div class="pm-pitchers">
+        <div class="pm-pitcher"><span class="pm-team">${g.aw}</span><span class="pm-pname">${ap.n||'TBD'}</span><span class="pm-pera ${eraC(ap.era||4.5)}">${ap.n&&ap.n!=='TBD'?ap.era.toFixed(2):'—'}</span></div>
+        <div class="pm-pitcher"><span class="pm-team">${g.hm}</span><span class="pm-pname">${hp.n||'TBD'}</span><span class="pm-pera ${eraC(hp.era||4.5)}">${hp.n&&hp.n!=='TBD'?hp.era.toFixed(2):'—'}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const selGame = qualifyingGames.find(g=>g.id===selectedBoardGame) || qualifyingGames[0];
+  const gamePlayers = filterPlayers(buildPlayers(selGame));
+  const wx = activeWX[selGame.id]||{};
+  const lockBadge = lockBadgeHtml(selGame);
+  const condBadgesHtml = condBadges(selGame);
+
+  const detailHtml = `<div class="bd-wrap">
+    <div class="bd-game-hd">
+      <div class="bd-matchup">${selGame.aw} <span style="color:var(--muted)">@</span> ${selGame.hm}</div>
+      <div class="bd-meta">${selGame.time} · ${selGame.venue||''}</div>
+      <div class="bd-badges">${lockBadge}${condBadgesHtml}${wx.dome?'<span class="gc-live">DOME</span>':''}</div>
+    </div>
+    <div class="gc-pm-row">
+      ${pitcherMatchupCard(selGame.ap, selGame.aw)}
+      ${pitcherMatchupCard(selGame.hp, selGame.hm)}
+    </div>
+    ${gamePlayers.length ? renderGameDetail(selGame, gamePlayers) : '<div class="no-games-msg" style="padding:20px 0">NO PLAYERS MATCH THIS FILTER FOR THIS GAME</div>'}
+  </div>`;
+
+  document.getElementById('board').innerHTML = `<div class="pm-strip">${stripHtml}</div>${detailHtml}`;
+}
+
+function selectBoardGame(id) {
+  selectedBoardGame = id;
+  render();
 }
 
 function setSort(col) {
@@ -1905,6 +1979,7 @@ function toggleGame(id) {
 // PITCHERS TAB
 // ═══════════════════════════════════════════════════
 let selectedPitcherGame = null;
+let selectedBoardGame   = null;
 
 function renderPitchersTab() {
   const el = document.getElementById('pitchersPanel');
@@ -2090,6 +2165,7 @@ document.getElementById('filterBar').addEventListener('click', e => {
   document.querySelectorAll('.ftab').forEach(t=>t.classList.remove('on','on-g'));
   b.classList.add('on');
   expandedGames = new Set();
+  selectedBoardGame = null;
   render();
 });
 
