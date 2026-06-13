@@ -664,6 +664,7 @@ def fetch_batting_season_stats():
             hr = int(stat.get("homeRuns", 0) or 0)
             avg = _safe_float(stat.get("avg"))
             slg = _safe_float(stat.get("slg"))
+            pa_raw = int(stat.get("plateAppearances", 0) or 0)
             result[name] = {
                 "G": g,
                 "HR": hr,
@@ -673,7 +674,9 @@ def fetch_batting_season_stats():
                 "OBP": _safe_float(stat.get("obp")),
                 "ISO": round(slg - avg, 3),
                 "hrPct": round((hr / g) * 100, 1) if g > 0 else 0,
-                "paPerG": round(int(stat.get("plateAppearances", 0) or 0) / g, 1) if g > 0 else 3.8,
+                "paPerG": round(pa_raw / g, 1) if g > 0 else 3.8,
+                "PA": pa_raw,
+                "SO": int(stat.get("strikeOuts", 0) or 0),
             }
 
         cache_set("batting_stats", result)
@@ -1987,7 +1990,15 @@ def _do_build(date_str):
             bat_stat = dict(batting.get(name, {}))
             if bat_stat.get("G", 0) < 1: continue   # was < 5; now include anyone with ≥1 game
 
-            sav          = savant.get(name, {})
+            sav          = dict(savant.get(name, {}))
+            # Compute overall whiff% from per-pitch data if not in Savant CSV
+            if not sav.get("whiff_pct"):
+                bp = batter_pitch_data.get(name, {})
+                if bp:
+                    _total_pa = sum(v.get("pa", 0) for v in bp.values())
+                    if _total_pa > 0:
+                        sav["whiff_pct"] = round(
+                            sum(v.get("whiff", 0) * v.get("pa", 0) for v in bp.values()) / _total_pa, 1)
             recent_stat  = recent.get(name, {})
             ha_splits    = home_away.get(name, {})
             month_stat   = monthly.get(name, {})
@@ -2067,7 +2078,9 @@ def _do_build(date_str):
                 "pullPct":          sav.get("pull_pct", 0),
                 "flyBall":          round(sav.get("fly_ball_pct") or 0, 1),
                 "whiffPct":         round(sav.get("whiff_pct") or 0, 1),
+                "la":               round(sav.get("launch_angle") or 0, 1),
                 "pitcherK9":        round(opp_pitcher.get("k9", 8.5), 1),
+                "kPct":             round(bat_stat.get("SO", 0) / max(bat_stat.get("PA", 1), 1) * 100, 1),
                 "pitcher":          opp_pitcher.get("name", "TBD"),
                 "pitcherEra":       opp_pitcher.get("era", 4.50),
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),

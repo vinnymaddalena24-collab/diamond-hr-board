@@ -200,12 +200,22 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .pf-dot{width:9px;height:9px;border-radius:50%}
 
 /* ── PLAYER TABLE ── */
-.pt-wrap{overflow-x:auto}
-table.pt{width:100%;border-collapse:collapse}
+.pt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.pt{width:100%;border-collapse:collapse;min-width:820px}
 table.pt th{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.6);text-align:left;white-space:nowrap;cursor:pointer;transition:color .1s;user-select:none}
 table.pt th:hover{color:var(--blue)}
 table.pt th.r{text-align:right}
-table.pt th.c{text-align:center}
+table.pt th.c{text-align:center;padding:7px 6px}
+/* Kasper-style heat-map stat cells */
+.kst{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;text-align:center;padding:6px 8px;white-space:nowrap;min-width:54px;color:var(--sub);vertical-align:middle}
+.kst .kl{font-size:7px;letter-spacing:.5px;display:block;font-weight:400;color:var(--muted);margin-top:1px;text-transform:uppercase}
+.kst.kg{background:rgba(16,185,129,.13);color:#34d399}
+.kst.ka{background:rgba(245,158,11,.13);color:#f59e0b}
+.kst.kr{background:rgba(239,68,68,.13);color:#f87171}
+/* Per-team section header inside game table */
+.tm-hd td{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);padding:5px 10px 3px;text-transform:uppercase;border-top:1px solid var(--border);background:rgba(6,12,24,.55)}
+/* Compact edge chips inside player cell */
+.p-edges{display:flex;flex-wrap:wrap;gap:2px;margin-top:3px}
 .th-sort{margin-left:3px;opacity:.4}
 .th-sort.asc::after{content:'↑'} .th-sort.desc::after{content:'↓'}
 .section-row td{padding:4px 10px 3px!important;background:rgba(6,12,24,.7);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);border-top:1px solid var(--border)}
@@ -455,11 +465,8 @@ table.pt th.c{text-align:center}
   .gc-matchup{font-size:14px}
   .gc-meta{font-size:8px}
   .gc-pitchers-row{flex-wrap:wrap}
-  /* Table: keep photo, player, HR%, score only */
-  table.pt th:nth-child(3),table.pt td:nth-child(3),
-  table.pt th:nth-child(4),table.pt td:nth-child(4),
-  table.pt th:nth-child(5),table.pt td:nth-child(5),
-  table.pt th:nth-child(6),table.pt td:nth-child(6){display:none}
+  /* Table scrolls on mobile — keep all columns but compress padding */
+  .kst{padding:5px 5px;min-width:44px;font-size:11px}
   /* Pitcher detail cards stack */
   .gcd-pitcher-strip{flex-direction:column}
   .pitcher-detail-card{min-width:unset}
@@ -471,8 +478,8 @@ table.pt th.c{text-align:center}
   .filter-bar .ftab{padding:5px 8px;font-size:8px}
   .gc-hdr-conds{display:none}
   .gc-toggle span{font-size:8px}
-  /* Tiny screens: show only photo, player, score */
-  table.pt th:nth-child(7),table.pt td:nth-child(7){display:none}
+  /* Tiny screens: compress further */
+  .kst{padding:4px 4px;min-width:40px;font-size:10px}
   /* Stack pitcher pills */
   .gc-pitchers-row{flex-direction:column}
   /* Shrink score number */
@@ -1226,7 +1233,12 @@ function buildPlayers(g) {
       scoreBreakdown: sp.scoreBreakdown || null,
       flyBall:    sp.flyBall    || 0,
       whiffPct:   sp.whiffPct   || 0,
+      la:         sp.la         || 0,
       pitcherK9:  sp.pitcherK9  || 0,
+      kPct:       sp.kPct       || 0,
+      hrForm: sp.hrPct > 0
+        ? Math.min(99, Math.max(0, Math.round((sp.recentHRPct||0) / sp.hrPct * 50)))
+        : 0,
       platoon: platAdj(sp.bats||'R', pitcher.h),
       score: sp.score||0, tier: sp.tier||tierOf(sp.score||0),
       gameId: g.id,
@@ -1466,18 +1478,31 @@ function renderGameDetail(g, players) {
   const sp0 = g.serverPlayers && g.serverPlayers[0];
   const umpName = sp0 ? (sp0.hpUmp||'') : '';
 
-  // Group by team, each group sorted by score desc
-  const byTeam = (abbr) => players.filter(p=>p.team===abbr).sort((a,b)=>b.score-a.score);
+  // Group by team, each group sorted by active column
+  const sortFn = (a,b) => {
+    const col = sortCol||'score';
+    const av = a[col]||0, bv = b[col]||0;
+    // SwStr% sorts ascending (lower = better) when sortDir='desc'
+    const inv = col === 'whiffPct';
+    const dir = sortDir==='asc' ? 1 : -1;
+    return inv ? (av - bv) * dir : (bv - av) * dir;
+  };
+  const byTeam = (abbr) => players.filter(p=>p.team===abbr).sort(sortFn);
   const awayPlayers = byTeam(g.aw);
   const homePlayers = byTeam(g.hm);
   // Fallback: any players not matched to either abbr (edge case)
   const matched = new Set([...awayPlayers, ...homePlayers].map(p=>p.name));
-  const rest = players.filter(p=>!matched.has(p.name)).sort((a,b)=>b.score-a.score);
+  const rest = players.filter(p=>!matched.has(p.name)).sort(sortFn);
 
   let tableRows = '';
   const teamSection = (abbr, teamPlayers) => {
     if(!teamPlayers.length) return '';
-    return `<tr class="section-row"><td colspan="9">${abbr} — ${teamPlayers.length} PLAYERS</td></tr>`
+    const opp = abbr === g.aw ? g.hp : g.ap;
+    const oppName = opp ? opp.n : '?';
+    const oppEra  = opp ? opp.era.toFixed(2) : '?.??';
+    const oppK9   = opp && opp.k9 > 0 ? ` · ${opp.k9.toFixed(1)} K/9` : '';
+    const oppHand = opp ? ` · ${opp.h}HP` : '';
+    return `<tr class="section-row"><td colspan="12">${abbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`
       + teamPlayers.map(p=>playerRow(p,g)).join('');
   };
   tableRows += teamSection(g.aw, awayPlayers);
@@ -1496,12 +1521,16 @@ function renderGameDetail(g, players) {
         <thead><tr>
           <th class="td-ph"></th>
           <th onclick="setSort('name')">PLAYER <span class="th-sort${sortCol==='name'?' '+sortDir:''}"></span></th>
-          <th>VS PITCHER</th>
-          <th class="r" onclick="setSort('HR')">HR <span class="th-sort${sortCol==='HR'?' '+sortDir:''}"></span></th>
-          <th class="r" onclick="setSort('barrel')">BARREL <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
-          <th>EDGES</th>
-          <th class="r" onclick="setSort('hrProb')">HR% <span class="th-sort${sortCol==='hrProb'?' '+sortDir:''}"></span></th>
-          <th class="r" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('hrForm')">FORM <span class="th-sort${sortCol==='hrForm'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('ISO')">ISO</th>
+          <th class="c" onclick="setSort('xwOBA')">xwOBA</th>
+          <th class="c" onclick="setSort('barrel')">Brl/BIP <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('whiffPct')">SwStr%</th>
+          <th class="c" onclick="setSort('sweetSpot')">Sweet%</th>
+          <th class="c" onclick="setSort('flyBall')">FB%</th>
+          <th class="c" onclick="setSort('hardHit')">HH%</th>
+          <th class="c" onclick="setSort('la')">LA</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -1512,6 +1541,24 @@ function renderGameDetail(g, players) {
 // ═══════════════════════════════════════════════════
 // PLAYER ROW
 // ═══════════════════════════════════════════════════
+
+// Kasper-style heat-map cell — higher is better unless inv=true
+function kCell(val, fmt, gMin, aMin, inv=false) {
+  const v = val || 0;
+  const display = v > 0 ? fmt(v) : '—';
+  if (!v) return `<td class="kst"><span style="color:var(--dim)">${display}</span></td>`;
+  const cls = inv
+    ? (v <= gMin ? 'kg' : v <= aMin ? 'ka' : 'kr')
+    : (v >= gMin ? 'kg' : v >= aMin ? 'ka' : 'kr');
+  return `<td class="kst ${cls}">${display}</td>`;
+}
+
+// Launch angle: optimal HR range is 15–30°
+function laCell(la) {
+  if (!la) return `<td class="kst"><span style="color:var(--dim)">—</span></td>`;
+  const cls = (la >= 15 && la <= 30) ? 'kg' : (la >= 10 && la <= 35) ? 'ka' : 'kr';
+  return `<td class="kst ${cls}">${la.toFixed(0)}°</td>`;
+}
 
 function playerRow(p, g) {
   const sel = legs.find(l=>l.name===p.name);
@@ -1590,60 +1637,68 @@ function playerRow(p, g) {
   const trend = trendHtml(p);
   const form7 = (p.recentG7d >= 3 && p.recentHR7d > 0) ? `· ${p.recentHR7d}HR/${p.recentG7d}G` : '';
 
+  // HR Form: (recent15d HR rate / season HR rate) × 50, where 50 = exactly on pace
+  const formScore = p.hrPct > 0 ? Math.min(99, Math.max(0, Math.round(p.recentHRPct / p.hrPct * 50))) : 0;
+  const formArrow = p.trend >= 2 ? '↑↑' : p.trend >= 1 ? '↑' : p.trend <= -2 ? '↓↓' : p.trend <= -1 ? '↓' : '→';
+  const formCls   = formScore >= 60 ? 'kg' : formScore >= 40 ? 'ka' : (formScore > 0 ? 'kr' : '');
+
+  // Pitch matchup chips (compact)
+  const pitchChips = p.pitchMatchup && p.pitchMatchup.length ? p.pitchMatchup.slice(0,3).map(m => {
+    const c = m.verdict==='CRUSHES'?'#10B981':m.verdict==='STRUGGLES'?'#EF4444':'#475569';
+    const bg = m.verdict==='CRUSHES'?'rgba(16,185,129,.1)':m.verdict==='STRUGGLES'?'rgba(239,68,68,.1)':'rgba(71,85,105,.08)';
+    return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap">${m.name.split(' ')[0]} ${m.pct}%</span>`;
+  }).join('') : '';
+
   const sprayRowHtml = expandedPlayer === p.name ? buildSprayRow(p) : '';
   return `<tr class="pr${sel?' sel':''}" data-leg='${legData.replace(/'/g,"&#39;")}' onclick="handleRowClick(this)">
-  <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add/remove from parlay slip" style="cursor:pointer">
+  <!-- Photo / parlay select -->
+  <td class="td-ph" onclick="handlePhotoClick(this,event)" title="Click to add to parlay slip" style="cursor:pointer">
     <div class="p-photo-wrap">
       <div class="p-photo" style="transition:border-color .12s;border-color:${sel?'var(--amber)':'var(--border)'}">⚾${photo}</div>
       <div class="sel-dot"></div>
     </div>
   </td>
+  <!-- Player cell: name + pitcher + edges -->
   <td class="td-player">
     <div class="p-name">
       ${p.name} ${trend}
       <span class="p-team">${p.team}</span>
       <span class="p-pos">${p.pos||'?'}</span>
       ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
+      ${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}
     </div>
-    <div class="p-sub">Bats ${p.bats}${form7?`<span style="color:var(--amber);margin-left:4px">${form7}</span>`:''}${p.hotStreak?' · 🔥 HOT':''}${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}</div>
-  </td>
-  <td class="td-vs">
-    <div class="vs-pitcher">vs ${p.pitcher.n}</div>
-    <div class="vs-era" style="color:${['danger','mid','elite'].includes(eraClass(p.pitcher.era))?{danger:'var(--red)',mid:'var(--amber)',elite:'var(--green)'}[eraClass(p.pitcher.era)]:'var(--sub)'}">${p.pitcher.era.toFixed(2)} ERA · ${p.pitcher.h}HP${(p.pitcherK9||0)>0?` · <span style="color:${(p.pitcherK9||0)>=11?'var(--red)':(p.pitcherK9||0)>=9.5?'var(--amber)':'inherit'}">${(p.pitcherK9||0).toFixed(1)} K/9</span>`:''}</div>
+    <div class="p-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · Bats ${p.bats}${form7?`<span style="color:var(--amber);margin-left:4px">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>
     ${h2hHtml}
-    ${p.pitchMatchup && p.pitchMatchup.length ? `
-    <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;">
-      ${p.pitchMatchup.slice(0,3).map(m => {
-        const c = m.verdict==='CRUSHES'?'#10B981':m.verdict==='STRONG'?'#F59E0B':m.verdict==='STRUGGLES'?'#EF4444':'#475569';
-        const bg = m.verdict==='CRUSHES'?'rgba(16,185,129,.1)':m.verdict==='STRUGGLES'?'rgba(239,68,68,.1)':'rgba(71,85,105,.1)';
-        const xslgTxt = m.xslg ? ` .${String(Math.round(m.xslg*1000)).padStart(3,'0')} xSLG` : '';
-        return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap" title="${m.pa>0?m.pa+' PA vs this pitch':''}">${m.name.split(' ')[0]} ${m.pct}%${xslgTxt}</span>`;
-      }).join('')}
-    </div>` : ''}
+    ${pitchChips ? `<div style="display:flex;gap:2px;flex-wrap:wrap;margin-top:2px">${pitchChips}</div>` : ''}
+    <div class="p-edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
   </td>
-  <td class="td-num r">
-    <span class="big${p.hotStreak?' hi-green':''}">${p.HR}</span>
-    <span class="sml">${p.hrPct.toFixed(1)}%</span>
-  </td>
-  <td class="td-num r">
-    <span class="big${p.barrel>=14?' hi-green':p.barrel>=10?' hi-amber':''}">${p.barrel.toFixed(1)}</span>
-    <span class="sml">BBL%</span>
-    ${(p.flyBall||0)>0?`<div style="margin-top:2px"><span class="sml" style="color:${(p.flyBall||0)>=42?'var(--green)':(p.flyBall||0)>=37?'var(--amber)':'var(--sub)'};font-weight:${(p.flyBall||0)>=37?'700':'400'}">${(p.flyBall||0).toFixed(0)}% FB</span></div>`:''}
-  </td>
-  <td class="td-edges">
-    <div class="edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
-  </td>
-  <td class="td-prob r">
-    ${(prob=>(prob>=15?`<span style="color:var(--green);font-weight:700">${prob.toFixed(1)}%</span>`:prob>=8?`<span style="color:var(--amber);font-weight:700">${prob.toFixed(1)}%</span>`:`<span style="color:var(--sub)">${prob.toFixed(1)}%</span>`))(p.hrProb||0)}
-  </td>
-  <td class="td-score">
+  <!-- SCORE -->
+  <td class="td-score" style="text-align:center;padding:6px 8px">
     <div class="score-wrap">
-      <div class="score-num score-${p.tier}">${p.score}</div>
+      <div class="score-num score-${p.tier}" style="font-size:20px">${p.score}</div>
       ${tipHtml}
     </div>
     <span class="tier-badge t${p.tier}">${p.tier}</span>
-    <div class="prob-bar"><div class="prob-fill" style="width:${probWidth}%"></div></div>
+    <div class="prob-bar" style="margin:3px auto 0"><div class="prob-fill" style="width:${probWidth}%"></div></div>
   </td>
+  <!-- HR FORM -->
+  <td class="kst ${formCls}" style="font-size:13px">${formScore > 0 ? `${formScore}%` : '—'}<br><span class="kl" style="font-size:9px">${formScore > 0 ? formArrow : ''}</span></td>
+  <!-- ISO -->
+  ${kCell(p.ISO, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .220, .155)}
+  <!-- xwOBA -->
+  ${kCell(p.xwOBA, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .360, .310)}
+  <!-- Brl/BIP% -->
+  ${kCell(p.barrel, v => v.toFixed(1)+'%', 10, 6)}
+  <!-- SwStr% (inverted: lower = better) -->
+  ${kCell(p.whiffPct, v => v.toFixed(0)+'%', 20, 27, true)}
+  <!-- Sweet Spot% -->
+  ${kCell(p.sweetSpot, v => v.toFixed(0)+'%', 38, 33)}
+  <!-- FB% -->
+  ${kCell(p.flyBall, v => v.toFixed(0)+'%', 38, 32)}
+  <!-- HH% -->
+  ${kCell(p.hardHit, v => v.toFixed(0)+'%', 48, 38)}
+  <!-- Launch Angle -->
+  ${laCell(p.la)}
 </tr>${sprayRowHtml}`;
 }
 
@@ -1722,7 +1777,7 @@ function renderTargetsPanel() {
       <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:2px">🎯 TARGETS — ${targetSet.size} PLAYER${targetSet.size!==1?'S':''}</span>
       <button onclick="targetSet.clear();saveTargets();updateTargetsBadge();renderTargetsPanel()" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:8px;padding:4px 12px;cursor:pointer;border-radius:5px;transition:all .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">CLEAR ALL</button>
     </div>
-    ${today.length?`<div class="pt-wrap"><table class="pt"><thead><tr><th class="td-ph"></th><th>PLAYER</th><th>VS PITCHER</th><th class="r">HR</th><th class="r">BARREL</th><th>EDGES</th><th class="r">SCORE</th><th></th></tr></thead><tbody>${today.map(p=>{const g=activeGames.find(g=>g.id===p.gameId)||activeGames[0];return playerRow(p,g);}).join('')}</tbody></table></div>`:'<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:12px 0">Targets not in today\'s lineup yet — check back after lineups post.</div>'}
+    ${today.length?`<div class="pt-wrap"><table class="pt"><thead><tr><th class="td-ph"></th><th>PLAYER</th><th class="c">SCORE</th><th class="c">FORM</th><th class="c">ISO</th><th class="c">xwOBA</th><th class="c">Brl/BIP</th><th class="c">SwStr%</th><th class="c">Sweet%</th><th class="c">FB%</th><th class="c">HH%</th><th class="c">LA</th></tr></thead><tbody>${today.map(p=>{const g=activeGames.find(g=>g.id===p.gameId)||activeGames[0];return playerRow(p,g);}).join('')}</tbody></table></div>`:'<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);padding:12px 0">Targets not in today\'s lineup yet — check back after lineups post.</div>'}
     ${notPlaying.length?`<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin:12px 0 6px">NOT PLAYING TODAY</div>
     ${notPlaying.map(n=>`<div style="padding:8px 12px;background:var(--card);border:1px solid var(--border);margin-bottom:4px;border-radius:6px;display:flex;align-items:center;justify-content:space-between"><span style="font-weight:700">${n}</span><button onclick="toggleTarget('${n.replace(/'/g,"&#39;")}');event.stopPropagation()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;transition:color .1s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button></div>`).join('')}`:''}
   </div>`;
