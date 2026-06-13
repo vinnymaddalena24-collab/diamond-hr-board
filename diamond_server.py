@@ -372,8 +372,10 @@ def fetch_schedule(date_str):
         print(f"[schedule] Error: {e}")
         return []
 
+FIP_CONSTANT = 3.17  # 2026 season approximation; scales FIP to league ERA
+
 def fetch_pitcher_stats(pitcher_id):
-    """Fetch ERA, WHIP, GB%, and primary FB velocity from MLB Stats API."""
+    """Fetch season stats + compute FIP, K%, BB%, strike% from MLB Stats API."""
     if not pitcher_id:
         return {}
     cached = cache_get(f"pitcher_{pitcher_id}")
@@ -389,13 +391,36 @@ def fetch_pitcher_stats(pitcher_id):
         if not splits:
             return {}
         s = splits[0]["stat"]
+
+        hr    = int(s.get("homeRuns", 0) or 0)
+        bb    = int(s.get("baseOnBalls", 0) or 0)
+        hbp   = int(s.get("hitBatsmen", 0) or 0)
+        k     = int(s.get("strikeOuts", 0) or 0)
+        bf    = int(s.get("battersFaced", 1) or 1)
+        ip_s  = str(s.get("inningsPitched", "0") or "0")
+        # Convert innings like "35.1" → 35 + 1/3 = 35.333
+        ip_parts = ip_s.split(".")
+        ip = int(ip_parts[0]) + int(ip_parts[1]) / 3 if len(ip_parts) == 2 else float(ip_s)
+        ip = max(ip, 1)
+
+        # FIP = (13*HR + 3*(BB+HBP) - 2*K) / IP + constant
+        fip = round((13 * hr + 3 * (bb + hbp) - 2 * k) / ip + FIP_CONSTANT, 2)
+
         result = {
-            "era":    float(s.get("era", 4.50)),
-            "whip":   float(s.get("whip", 1.30)),
-            "hr9":    float(s.get("homeRunsPer9", 1.10)),
-            "k9":     float(s.get("strikeoutsPer9", 7.5)),
-            "bb9":    float(s.get("walksPer9", 3.0)),
-            "gbPct":  float(s.get("groundOutsToAirouts", 1.0)),
+            "era":     float(s.get("era", 4.50)),
+            "whip":    float(s.get("whip", 1.30)),
+            "fip":     fip,
+            "hr9":     float(s.get("homeRunsPer9", 1.10)),
+            "k9":      float(s.get("strikeoutsPer9", 7.5)),
+            "bb9":     float(s.get("walksPer9", 3.0)),
+            "kPct":    round(k / bf * 100, 1),
+            "bbPct":   round(bb / bf * 100, 1),
+            "kbbPct":  round((k - bb) / bf * 100, 1),
+            "strikePct": round(float(s.get("strikePercentage", 0) or 0) * 100, 1),  # first-pitch strike proxy
+            "pitchPerIP": round(float(s.get("pitchesPerInning", 14) or 14), 1),
+            "ip":      round(ip, 1),
+            "gbPct":   float(s.get("groundOutsToAirouts", 1.0)),
+            "gs":      int(s.get("gamesStarted", 0) or 0),
         }
         era = result["era"]
         result["quality"] = "elite" if era < 2.80 else "danger" if era > 4.80 else "mid"
@@ -1977,10 +2002,14 @@ def _do_build(date_str):
             psav  = pitcher_sav_map.get(name, {})
             ars   = pitcher_arsenal.get(name, {})
             g[side].update(stats)
-            g[side]["_log"]    = plog
-            g[side]["_psav"]   = psav
-            g[side]["arsenal"] = ars          # pitch-type breakdown for Pitchers tab
-            g[side]["starts"]  = plog.get("starts", [])
+            g[side]["_log"]     = plog
+            g[side]["_psav"]    = psav
+            g[side]["arsenal"]  = ars          # pitch-type breakdown for Pitchers tab
+            g[side]["starts"]   = plog.get("starts", [])
+            g[side]["recentEra"] = plog.get("recent_era", g[side].get("era", 4.50))
+            g[side]["daysRest"]  = plog.get("days_rest", 5)
+            g[side]["lastPitches"] = plog.get("last_pitches", 0)
+            g[side]["fatigued"]  = plog.get("fatigued", False)
             # Flatten savant allowed stats directly onto pitcher for easy JS access
             if psav:
                 g[side]["xwoba_against"]      = psav.get("xwoba_against", 0)

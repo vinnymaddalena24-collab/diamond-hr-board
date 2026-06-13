@@ -200,6 +200,24 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .pf-dot{width:9px;height:9px;border-radius:50%}
 
 /* ── PITCHER CARDS (Pitchers Tab) ── */
+/* Matchup card selector strip */
+.pm-strip{display:flex;gap:10px;overflow-x:auto;padding:14px 16px 10px;border-bottom:1px solid var(--border);scrollbar-width:none}
+.pm-strip::-webkit-scrollbar{display:none}
+.pm-card{flex-shrink:0;width:180px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .15s;position:relative}
+.pm-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.pm-card.active{border-color:var(--blue);background:rgba(59,130,246,.07)}
+.pm-matchup{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--text);margin-bottom:3px}
+.pm-time{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:7px}
+.pm-pitchers{display:flex;flex-direction:column;gap:3px}
+.pm-pitcher{font-family:'JetBrains Mono',monospace;font-size:8px;display:flex;align-items:center;gap:5px}
+.pm-pitcher .pm-team{color:var(--muted);width:22px;flex-shrink:0}
+.pm-pitcher .pm-pname{color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-pitcher .pm-pera{font-weight:700}
+.pm-pitcher .pm-pera.good{color:var(--green)}
+.pm-pitcher .pm-pera.bad{color:var(--red)}
+.pm-pitcher .pm-pera.mid{color:var(--amber)}
+/* Expanded pitcher detail area */
+.pc-detail{padding:16px 20px}
 .pc-game{margin-bottom:20px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .pc-game-hd{padding:10px 16px;background:rgba(6,12,24,.8);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px}
 .pc-game-matchup{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:2px;color:var(--text)}
@@ -1107,17 +1125,27 @@ async function loadDay(dateObj) {
     serverInjuries= data.injuryList || [];
     bustPlayersCache();
     function _mapPitcher(p) {
-      if(!p) return {n:'TBD',h:'R',era:4.50,fb:38,vel:92.5,q:'mid',recentEra:4.50,fatigued:false,starts:[],arsenal:{},k9:0,bb9:0,whip:0,xwoba_against:0,xera:0,barrel_allowed:0,hard_hit_allowed:0,avg_ev_against:0,sweet_spot_against:0};
+      if(!p) return {n:'TBD',h:'R',era:4.50,fb:38,vel:92.5,q:'mid',recentEra:4.50,fatigued:false,starts:[],arsenal:{},k9:0,bb9:0,whip:0,fip:0,kPct:0,bbPct:0,kbbPct:0,strikePct:0,pitchPerIP:0,ip:0,gs:0,daysRest:5,lastPitches:0,xwoba_against:0,xera:0,barrel_allowed:0,hard_hit_allowed:0,avg_ev_against:0,sweet_spot_against:0};
       return {
         n:   p.name, h: p.hand||'R', era: p.era||4.50,
         fb:  p.fbPct||38, vel: p.vel||92.5, q: p.quality||'mid',
-        recentEra: p.recentEra || p.era || 4.50,
-        fatigued:  p.fatigued || false,
-        starts:    p.starts || [],
-        arsenal:   p.arsenal || {},
-        k9:        p.k9  || 0,
-        bb9:       p.bb9 || 0,
-        whip:      p.whip || 0,
+        recentEra:  p.recentEra  || p.era || 4.50,
+        fatigued:   p.fatigued   || false,
+        daysRest:   p.daysRest   || 5,
+        lastPitches:p.lastPitches|| 0,
+        starts:     p.starts     || [],
+        arsenal:    p.arsenal    || {},
+        k9:         p.k9         || 0,
+        bb9:        p.bb9        || 0,
+        whip:       p.whip       || 0,
+        fip:        p.fip        || 0,
+        kPct:       p.kPct       || 0,
+        bbPct:      p.bbPct      || 0,
+        kbbPct:     p.kbbPct     || 0,
+        strikePct:  p.strikePct  || 0,
+        pitchPerIP: p.pitchPerIP || 0,
+        ip:         p.ip         || 0,
+        gs:         p.gs         || 0,
         xwoba_against:      p.xwoba_against      || 0,
         xera:               p.xera               || 0,
         barrel_allowed:     p.barrel_allowed      || 0,
@@ -1766,16 +1794,19 @@ function toggleGame(id) {
 // ═══════════════════════════════════════════════════
 // PITCHERS TAB
 // ═══════════════════════════════════════════════════
+let selectedPitcherGame = null;
+
 function renderPitchersTab() {
   const el = document.getElementById('pitchersPanel');
   if(!activeGames.length){ el.innerHTML='<div class="no-games-msg">NO GAMES SCHEDULED</div>'; return; }
 
+  const games = activeGames.filter(g => (g.ap&&g.ap.n!=='TBD') || (g.hp&&g.hp.n!=='TBD'));
+  if(!games.length){ el.innerHTML='<div class="no-games-msg">NO PITCHER DATA AVAILABLE</div>'; return; }
+
+  if(!selectedPitcherGame) selectedPitcherGame = games[0].id;
+
   const M = 'font-family:\'JetBrains Mono\',monospace';
 
-  function statCell(val, lbl, cls='') {
-    const display = (val != null && val !== 0) ? (typeof val === 'number' ? (val < 10 ? val.toFixed(2) : val.toFixed(1)) : val) : '—';
-    return `<div class="pc-stat"><span class="pc-sv ${cls}">${display}</span><span class="pc-sl">${lbl}</span></div>`;
-  }
   function kstCell(val, lbl, gMin, aMin, inv=false, fmt=null) {
     if(!val){ return `<div class="pc-stat"><span class="pc-sv" style="color:var(--dim)">—</span><span class="pc-sl">${lbl}</span></div>`; }
     const cls = inv ? (val<=gMin?'kg':val<=aMin?'ka':'kr') : (val>=gMin?'kg':val>=aMin?'ka':'kr');
@@ -1783,15 +1814,41 @@ function renderPitchersTab() {
     return `<div class="pc-stat"><span class="pc-sv ${cls}">${display}</span><span class="pc-sl">${lbl}</span></div>`;
   }
 
+  function eraColorClass(era) {
+    return era <= 3.5 ? 'good' : era >= 4.5 ? 'bad' : 'mid';
+  }
+
+  // Matchup selector strip cards
+  const stripHtml = games.map(g => {
+    const ap = g.ap||{}; const hp = g.hp||{};
+    const active = g.id === selectedPitcherGame ? ' active' : '';
+    const apEraC = eraColorClass(ap.era||4.50);
+    const hpEraC = eraColorClass(hp.era||4.50);
+    return `<div class="pm-card${active}" onclick="selectPitcherGame('${g.id}')">
+      <div class="pm-matchup">${g.aw} @ ${g.hm}</div>
+      <div class="pm-time">${g.time}</div>
+      <div class="pm-pitchers">
+        <div class="pm-pitcher">
+          <span class="pm-team">${g.aw}</span>
+          <span class="pm-pname">${ap.n||'TBD'}</span>
+          <span class="pm-pera ${apEraC}">${ap.n&&ap.n!=='TBD' ? ap.era.toFixed(2) : '—'}</span>
+        </div>
+        <div class="pm-pitcher">
+          <span class="pm-team">${g.hm}</span>
+          <span class="pm-pname">${hp.n||'TBD'}</span>
+          <span class="pm-pera ${hpEraC}">${hp.n&&hp.n!=='TBD' ? hp.era.toFixed(2) : '—'}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
   function pitcherCard(p, team, opp, isHome) {
-    if(!p || p.n === 'TBD') return `<div class="pc-card"><div class="pc-name" style="color:var(--muted)">TBD</div></div>`;
-    const ec = eraClass(p.era);
+    if(!p || p.n === 'TBD') return `<div class="pc-card"><div class="pc-name" style="color:var(--muted);padding:20px 0">TBD</div></div>`;
     const vel = (p.vel && p.vel !== 92.5) ? p.vel : null;
-    const hand = p.h || p.hand || 'R';
+    const hand = p.h || 'R';
 
     // Arsenal — sort by usage%, take top 5
-    const ars = p.arsenal || {};
-    const pitchTypes = Object.entries(ars)
+    const pitchTypes = Object.entries(p.arsenal||{})
       .filter(([,v]) => v.pct > 0)
       .sort((a,b) => b[1].pct - a[1].pct)
       .slice(0, 5);
@@ -1799,7 +1856,7 @@ function renderPitchersTab() {
     const arsenalHtml = pitchTypes.length ? pitchTypes.map(([pt, v]) => {
       const wc = (v.whiff_pct||0) >= 30 ? 'kg' : (v.whiff_pct||0) >= 20 ? 'ka' : 'kr';
       const rc = (v.run_val_100||0) <= -1 ? 'kr' : (v.run_val_100||0) <= 1 ? 'ka' : 'kg';
-      const xwc = (v.xwoba_against||0) > 0 ? ((v.xwoba_against < .290 ? 'kg' : v.xwoba_against < .340 ? 'ka' : 'kr')) : '';
+      const xwc = (v.xwoba_against||0) > 0 ? (v.xwoba_against < .290 ? 'kg' : v.xwoba_against < .340 ? 'ka' : 'kr') : '';
       return `<div class="pc-pitch">
         <span class="pc-pt">${pt}</span>
         <span class="pc-pn">${v.name}</span>
@@ -1824,32 +1881,47 @@ function renderPitchersTab() {
       </div>`;
     }).join('') : `<div style="${M};font-size:8px;color:var(--dim);padding:4px 0">No starts yet</div>`;
 
+    const fatigueBadge = p.fatigued ? `<span class="cbdg" style="background:rgba(239,68,68,.15);color:var(--red);border-color:rgba(239,68,68,.3)">FATIGUED</span>` : '';
+    const restBadge = p.daysRest > 0 ? `<span style="${M};font-size:8px;color:var(--muted)">${p.daysRest}d rest · ${p.lastPitches||0}p last</span>` : '';
+
     return `<div class="pc-card">
       <div class="pc-head">
         <div>
           <div class="pc-name">${p.n}</div>
-          <div class="pc-meta">${team} · ${hand}HP · vs ${opp}${isHome?' (HOME)':' (AWAY)'}</div>
+          <div class="pc-meta">${team} · ${hand}HP · ${isHome?'HOME':'AWAY'} vs ${opp}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px">${fatigueBadge}${restBadge}</div>
         </div>
         ${vel ? `<div class="pc-vel">${vel}<span style="font-size:9px;color:var(--muted)">mph</span></div>` : ''}
       </div>
 
       <div class="pc-section-lbl">SEASON RESULTS</div>
       <div class="pc-stats-row">
-        ${kstCell(p.era, 'ERA', 3.0, 4.0, true, v => v.toFixed(2))}
-        ${kstCell(p.xera||0, 'xERA', 3.0, 4.2, true, v => v.toFixed(2))}
-        ${kstCell(p.recentEra, 'REC.ERA', 3.0, 4.2, true, v => v.toFixed(2))}
-        ${kstCell(p.whip, 'WHIP', 1.1, 1.3, true, v => v.toFixed(2))}
-        ${kstCell(p.k9, 'K/9', 10, 8, false, v => v.toFixed(1))}
-        ${kstCell(p.bb9, 'BB/9', 0, 3.5, true, v => v.toFixed(1))}
+        ${kstCell(p.era,       'ERA',     3.0, 4.0, true,  v => v.toFixed(2))}
+        ${kstCell(p.fip||0,    'FIP',     3.0, 4.2, true,  v => v.toFixed(2))}
+        ${kstCell(p.xera||0,   'xERA',    3.0, 4.2, true,  v => v.toFixed(2))}
+        ${kstCell(p.recentEra, 'REC.ERA', 3.0, 4.2, true,  v => v.toFixed(2))}
+        ${kstCell(p.whip,      'WHIP',    1.1, 1.3, true,  v => v.toFixed(2))}
+        ${kstCell(p.k9,        'K/9',     10,  8,   false, v => v.toFixed(1))}
+        ${kstCell(p.bb9,       'BB/9',    0,   3.5, true,  v => v.toFixed(1))}
+        ${kstCell(p.kPct||0,   'K%',      28,  22,  false, v => v.toFixed(0)+'%')}
+        ${kstCell(p.bbPct||0,  'BB%',     0,   8,   true,  v => v.toFixed(0)+'%')}
+      </div>
+
+      <div class="pc-section-lbl">COMMAND & EFFICIENCY</div>
+      <div class="pc-stats-row">
+        ${kstCell(p.strikePct||0,  'STRK%',   68, 62, false, v => v.toFixed(0)+'%')}
+        ${kstCell(p.pitchPerIP||0, 'P/IP',    0,  16, true,  v => v.toFixed(1))}
+        ${kstCell(p.ip||0,         'IP',      80, 50, false, v => v.toFixed(1))}
+        ${kstCell(p.gs||0,         'GS',      0,  0,  false, v => v.toFixed(0))}
       </div>
 
       <div class="pc-section-lbl">CONTACT QUALITY ALLOWED</div>
       <div class="pc-stats-row">
-        ${kstCell(p.xwoba_against||0, 'xwOBA', 0, .290, true, v => '.'+String(Math.round(v*1000)).padStart(3,'0'))}
-        ${kstCell(p.barrel_allowed||0, 'Brl%', 0, 6, true, v => v.toFixed(1)+'%')}
-        ${kstCell(p.hard_hit_allowed||0, 'HH%', 0, 38, true, v => v.toFixed(0)+'%')}
-        ${kstCell(p.avg_ev_against||0, 'AvgEV', 0, 89, true, v => v.toFixed(1))}
-        ${kstCell(p.sweet_spot_against||0, 'Sweet%', 0, 36, true, v => v.toFixed(0)+'%')}
+        ${kstCell(p.xwoba_against||0,      'xwOBA',  0, .290, true, v => '.'+String(Math.round(v*1000)).padStart(3,'0'))}
+        ${kstCell(p.barrel_allowed||0,     'Brl%',   0, 6,    true, v => v.toFixed(1)+'%')}
+        ${kstCell(p.hard_hit_allowed||0,   'HH%',    0, 38,   true, v => v.toFixed(0)+'%')}
+        ${kstCell(p.avg_ev_against||0,     'AvgEV',  0, 89,   true, v => v.toFixed(1))}
+        ${kstCell(p.sweet_spot_against||0, 'Sweet%', 0, 36,   true, v => v.toFixed(0)+'%')}
       </div>
 
       <div class="pc-section-lbl">PITCH ARSENAL</div>
@@ -1860,24 +1932,24 @@ function renderPitchersTab() {
     </div>`;
   }
 
-  const gameBlocks = activeGames.map(g => {
-    const ap = g.ap || {}; const hp = g.hp || {};
-    const hasAp = ap.n && ap.n !== 'TBD';
-    const hasHp = hp.n && hp.n !== 'TBD';
-    if(!hasAp && !hasHp) return '';
-    return `<div class="pc-game">
-      <div class="pc-game-hd">
-        <span class="pc-game-matchup">${g.aw} @ ${g.hm}</span>
-        <span class="pc-game-meta">${g.time} · ${g.venue}</span>
-      </div>
-      <div class="pc-cols">
-        ${pitcherCard(g.ap, g.aw, g.hm, false)}
-        ${pitcherCard(g.hp, g.hm, g.aw, true)}
-      </div>
-    </div>`;
-  }).filter(Boolean).join('');
+  const selGame = games.find(g => g.id === selectedPitcherGame) || games[0];
+  const detailHtml = `<div class="pc-game">
+    <div class="pc-game-hd">
+      <span class="pc-game-matchup">${selGame.aw} @ ${selGame.hm}</span>
+      <span class="pc-game-meta">${selGame.time} · ${selGame.venue}</span>
+    </div>
+    <div class="pc-cols">
+      ${pitcherCard(selGame.ap, selGame.aw, selGame.hm, false)}
+      ${pitcherCard(selGame.hp, selGame.hm, selGame.aw, true)}
+    </div>
+  </div>`;
 
-  el.innerHTML = `<div style="padding:16px 20px">${gameBlocks}</div>`;
+  el.innerHTML = `<div class="pm-strip">${stripHtml}</div><div class="pc-detail">${detailHtml}</div>`;
+}
+
+function selectPitcherGame(gameId) {
+  selectedPitcherGame = gameId;
+  renderPitchersTab();
 }
 
 // ═══════════════════════════════════════════════════
