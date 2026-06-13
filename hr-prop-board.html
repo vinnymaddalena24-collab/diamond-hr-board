@@ -41,6 +41,12 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-s
 .p-hit-badge{font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px;margin-left:4px}
 .p-hit-badge.hit{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
 .p-hit-badge.miss{background:rgba(239,68,68,.08);color:rgba(239,68,68,.6);border:1px solid rgba(239,68,68,.2)}
+/* Day-before HR tracking */
+.p-yday{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;flex-shrink:0;cursor:default}
+.p-yday.yday-ohfor{background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.4)}
+.p-yday.yday-hr{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.35)}
+.p-yday.yday-norm{background:var(--surface);color:var(--muted);border:1px solid var(--border)}
+.p-since-hr{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.3);flex-shrink:0;cursor:default}
 .status-pill{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:4px 10px;border-radius:20px;border:1px solid transparent}
 .status-pill.live{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.35);color:var(--green)}
 .status-pill.loading{background:rgba(71,85,105,.15);border-color:var(--border);color:var(--muted)}
@@ -798,6 +804,16 @@ function computeEdges(p, g) {
       if(bad) edges.push({l:`WEAK vs ${bad.name.split(' ')[0]}`, t:'neg'});
     }
   }
+  // Day-before HR tracking signals
+  if(p.prevOhFor && p.gamesSinceHR > 0) {
+    // Went 0-for last game and hasn't homered since — strongest signal
+    const pct = p.pctAfterOhFor;
+    edges.push({l: pct >= 40 ? `0-FOR YDAY (${pct}%)` : `0-FOR YDAY`, t:'pos'});
+  }
+  if(!p.prevOhFor && p.gamesSinceHR >= 6) {
+    // Long drought — due factor (season avg ~every 5-7g for HR hitters)
+    edges.push({l:`${p.gamesSinceHR}G NO HR`, t:'neu'});
+  }
   // PrizePicks line — rendered separately as a badge, not an edge chip
   // Confirmed in lineup
   if(p.confirmed && p.lineupPos > 0) edges.push({l:`#${p.lineupPos} LINEUP`, t:'neu'});
@@ -1290,6 +1306,14 @@ function buildPlayers(g) {
       la:         sp.la         || 0,
       pitcherK9:  sp.pitcherK9  || 0,
       kPct:       sp.kPct       || 0,
+      gamesSinceHR:  sp.gamesSinceHR  || 0,
+      lastGameH:     sp.lastGameH     || 0,
+      lastGameAB:    sp.lastGameAB    || 0,
+      lastGameHR:    sp.lastGameHR    || 0,
+      prevOhFor:     sp.prevOhFor     || false,
+      pctAfterOhFor: sp.pctAfterOhFor || 0,
+      pctAfter1Hit:  sp.pctAfter1Hit  || 0,
+      pctAfterMulti: sp.pctAfterMulti || 0,
       hrForm: sp.hrPct > 0
         ? Math.min(99, Math.max(0, Math.round((sp.recentHRPct||0) / sp.hrPct * 50)))
         : 0,
@@ -1683,6 +1707,12 @@ function playerRow(p, g) {
   const trend = trendHtml(p);
   const form7 = (p.recentG7d >= 3 && p.recentHR7d > 0) ? `· ${p.recentHR7d}HR/${p.recentG7d}G` : '';
 
+  // Day-before indicator
+  const ydayStr = p.lastGameAB > 0 ? `${p.lastGameH}/${p.lastGameAB}` : null;
+  const ydayCls = p.prevOhFor ? 'yday-ohfor' : (p.lastGameHR > 0 ? 'yday-hr' : 'yday-norm');
+  const ydayHtml = ydayStr ? `<span class="p-yday ${ydayCls}" title="Last game: ${p.lastGameH}-for-${p.lastGameAB}${p.lastGameHR>0?' (HR)':''}">${ydayStr}${p.lastGameHR>0?' ⚡':''}</span>` : '';
+  const sinceHtml = p.gamesSinceHR >= 5 ? `<span class="p-since-hr" title="${p.gamesSinceHR} games without a HR">${p.gamesSinceHR}G↯</span>` : '';
+
   // HR Form: (recent15d HR rate / season HR rate) × 50, where 50 = exactly on pace
   const formScore = p.hrPct > 0 ? Math.min(99, Math.max(0, Math.round(p.recentHRPct / p.hrPct * 50))) : 0;
   const formArrow = p.trend >= 2 ? '↑↑' : p.trend >= 1 ? '↑' : p.trend <= -2 ? '↓↓' : p.trend <= -1 ? '↓' : '→';
@@ -1710,6 +1740,7 @@ function playerRow(p, g) {
       <span class="p-team">${p.team}</span>
       <span class="p-pos">${p.pos||'?'}</span>
       ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
+      ${ydayHtml}${sinceHtml}
       ${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}
     </div>
     <div class="p-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · Bats ${p.bats}${form7?`<span style="color:var(--amber);margin-left:4px">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>

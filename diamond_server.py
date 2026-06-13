@@ -753,6 +753,80 @@ def fetch_recent_batting_stats(days=15):
         print(f"[recent_batting] Error: {e}")
         return {}
 
+def fetch_batter_game_log(player_id):
+    """Per-game hitting log: games since last HR, last game hits/AB, due factor, HR pattern."""
+    if not player_id: return {}
+    cached = cache_get(f"bgl_{player_id}")
+    if cached: return cached
+
+    url = (f"https://statsapi.mlb.com/api/v1/people/{player_id}/stats"
+           f"?stats=gameLog&group=hitting&season=2026&limit=25")
+    try:
+        data   = fetch(url)
+        splits = data.get("stats", [{}])[0].get("splits", [])
+        if not splits: return {}
+
+        games = []
+        for s in splits:
+            stat = s.get("stat", {})
+            games.append({
+                "date": s.get("date", ""),
+                "h":    int(stat.get("hits", 0) or 0),
+                "ab":   int(stat.get("atBats", 0) or 0),
+                "hr":   int(stat.get("homeRuns", 0) or 0),
+                "bb":   int(stat.get("baseOnBalls", 0) or 0),
+                "k":    int(stat.get("strikeOuts", 0) or 0),
+            })
+        # Most recent first
+        games.sort(key=lambda x: x["date"], reverse=True)
+
+        # How many consecutive games (starting from most recent) without a HR
+        games_since_hr = 0
+        for gm in games:
+            if gm["hr"] > 0:
+                break
+            games_since_hr += 1
+
+        # Last game stats (the "day before" today)
+        last_game = games[0] if games else {}
+
+        # HR pattern: for each HR game, look at what happened the previous game
+        # Count how many HRs came after a 0-fer, 1-hit, 2+ hit prior game
+        total_hr_games = 0
+        after_ohfor    = 0  # 0 hits previous game
+        after_1hit     = 0  # exactly 1 hit
+        after_multi    = 0  # 2+ hits
+        for i, gm in enumerate(games):
+            if gm["hr"] > 0 and i + 1 < len(games):
+                prev = games[i + 1]
+                total_hr_games += 1
+                if prev["ab"] > 0:
+                    if prev["h"] == 0:
+                        after_ohfor += 1
+                    elif prev["h"] == 1:
+                        after_1hit  += 1
+                    else:
+                        after_multi += 1
+
+        result = {
+            "gamesSinceHR":  games_since_hr,
+            "lastGameH":     last_game.get("h", 0),
+            "lastGameAB":    last_game.get("ab", 0),
+            "lastGameHR":    last_game.get("hr", 0),
+            "lastGameDate":  last_game.get("date", ""),
+            "prevOhFor":     last_game.get("ab", 0) > 0 and last_game.get("h", 0) == 0,
+            "totalHRGames":  total_hr_games,
+            "pctAfterOhFor": round(after_ohfor / total_hr_games * 100) if total_hr_games > 0 else 0,
+            "pctAfter1Hit":  round(after_1hit  / total_hr_games * 100) if total_hr_games > 0 else 0,
+            "pctAfterMulti": round(after_multi  / total_hr_games * 100) if total_hr_games > 0 else 0,
+        }
+        cache_set(f"bgl_{player_id}", result, ttl=3600)
+        return result
+    except Exception as e:
+        print(f"[bgl {player_id}] Error: {e}")
+        return {}
+
+
 def fetch_pitcher_game_log(pitcher_id):
     """Last 5 starts: real per-start lines, rolling ERA, days rest, fatigue flag."""
     if not pitcher_id: return {}
@@ -1985,7 +2059,23 @@ def _do_build(date_str):
     batter_pitch_data = safe(f_b_pitch)
     _, et_hour = get_today_str()
 
-    # ── Step 3: Assign pre-fetched data to games (zero network calls) ─────────
+    # ── Step 3b: Batter game logs (second wave — needs roster IDs from phase 1) ─
+    # Extract all unique batter IDs from the resolved roster data
+    batter_ids = set()
+    for name, info in rosters.items():
+        pid = info.get("id")
+        pos = info.get("pos", "")
+        if pid and pos not in ("P", "SP", "RP"):
+            batter_ids.add(pid)
+    _lap(f"launching batter game logs for {len(batter_ids)} players")
+    _ex2 = concurrent.futures.ThreadPoolExecutor(max_workers=30)
+    f_bgl = {pid: _ex2.submit(fetch_batter_game_log, pid) for pid in batter_ids}
+    concurrent.futures.wait(list(f_bgl.values()), timeout=25)
+    _ex2.shutdown(wait=False)
+    batter_glogs = {pid: (f.result(timeout=0) if f.done() else {}) for pid, f in f_bgl.items()}
+    _lap(f"batter game logs done — {sum(1 for v in batter_glogs.values() if v)} loaded")
+
+    # ── Step 4: Assign pre-fetched data to games (zero network calls) ─────────
     for g in games:
         g["weather"] = weather_map.get(g["id"], {
             "dome": False, "temp": 72, "wind_mph": 5, "wind_dir": 180,
@@ -2072,6 +2162,7 @@ def _do_build(date_str):
             pitcher_sav  = opp_pitcher.get("_psav", {})
             opp_bullpen  = opp_bullpen_home if is_away else opp_bullpen_away
             pid          = roster_info.get("id")
+            bgl          = batter_glogs.get(pid, {})
             lineup       = away_lineup if is_away else home_lineup
             lineup_pos   = (lineup.index(pid) + 1) if pid and pid in lineup else 0
 
@@ -2176,6 +2267,15 @@ def _do_build(date_str):
                 "score":            score,
                 "tier":             tier,
                 "scoreBreakdown":   breakdown,
+                # Day-before tracking
+                "gamesSinceHR":     bgl.get("gamesSinceHR", 0),
+                "lastGameH":        bgl.get("lastGameH", 0),
+                "lastGameAB":       bgl.get("lastGameAB", 0),
+                "lastGameHR":       bgl.get("lastGameHR", 0),
+                "prevOhFor":        bgl.get("prevOhFor", False),
+                "pctAfterOhFor":    bgl.get("pctAfterOhFor", 0),
+                "pctAfter1Hit":     bgl.get("pctAfter1Hit", 0),
+                "pctAfterMulti":    bgl.get("pctAfterMulti", 0),
             })
 
         # ── Diagnostic: print filter counts when a game has 0 players ──────────
