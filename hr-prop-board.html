@@ -1011,7 +1011,7 @@ function buildSprayRow(player) {
   } else {
     inner = buildSprayInner(player, events, homeTeam);
   }
-  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="9">${inner}</td></tr>`;
+  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="13">${inner}</td></tr>`;
 }
 
 function setSprayFilter(playerName, f) {
@@ -1353,6 +1353,7 @@ function buildPlayers(g) {
       la:         sp.la         || 0,
       pitcherK9:  sp.pitcherK9  || 0,
       kPct:       sp.kPct       || 0,
+      hrPerK:     sp.hrPerK     || 0,
       gamesSinceHR:  sp.gamesSinceHR  || 0,
       lastGameH:     sp.lastGameH     || 0,
       lastGameAB:    sp.lastGameAB    || 0,
@@ -1679,7 +1680,7 @@ function renderGameDetail(g, players) {
     </button>
   </div>`;
 
-  const sectionHeader = `<tr class="section-row"><td colspan="12">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
+  const sectionHeader = `<tr class="section-row"><td colspan="13">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
   const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
     + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
 
@@ -1693,6 +1694,7 @@ function renderGameDetail(g, players) {
           <th onclick="setSort('name')">PLAYER <span class="th-sort${sortCol==='name'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('hrForm')">FORM <span class="th-sort${sortCol==='hrForm'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('hrPerK')">HR/K <span class="th-sort${sortCol==='hrPerK'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('ISO')">ISO</th>
           <th class="c" onclick="setSort('xwOBA')">xwOBA</th>
           <th class="c" onclick="setSort('barrel')">Brl/BIP <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
@@ -1857,6 +1859,8 @@ function playerRow(p, g) {
   </td>
   <!-- HR FORM -->
   <td class="kst ${formCls}" style="font-size:13px">${formScore > 0 ? `${formScore}%` : '—'}<br><span class="kl" style="font-size:9px">${formScore > 0 ? formArrow : ''}</span></td>
+  <!-- HR/K — higher = more HRs per strikeout (elite ≥0.25, good ≥0.15) -->
+  ${kCell(p.hrPerK, v => v.toFixed(2), 0.25, 0.15)}
   <!-- ISO -->
   ${kCell(p.ISO, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .220, .155)}
   <!-- xwOBA -->

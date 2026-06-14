@@ -707,6 +707,7 @@ def fetch_batting_season_stats():
                 "PA": pa_raw,
                 "SO": int(stat.get("strikeOuts", 0) or 0),
                 "airOutPct": fb_proxy,
+                "hrPerK": round(hr / max(int(stat.get("strikeOuts", 0) or 0), 1), 3),
             }
 
         cache_set("batting_stats", result)
@@ -2240,6 +2241,7 @@ def _do_build(date_str):
                 "la":               round(sav.get("launch_angle") or 0, 1),
                 "pitcherK9":        round(opp_pitcher.get("k9", 8.5), 1),
                 "kPct":             round(bat_stat.get("SO", 0) / max(bat_stat.get("PA", 1), 1) * 100, 1),
+                "hrPerK":           bat_stat.get("hrPerK", 0),
                 "pitcher":          opp_pitcher.get("name", "TBD"),
                 "pitcherEra":       opp_pitcher.get("era", 4.50),
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),
