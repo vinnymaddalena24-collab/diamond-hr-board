@@ -1980,7 +1980,10 @@ function renderBoardWithStrip() {
     ${gamePlayers.length ? renderGameDetail(selGame, gamePlayers) : '<div class="no-games-msg" style="padding:20px 0">NO PLAYERS MATCH THIS FILTER FOR THIS GAME</div>'}
   </div>`;
 
+  const prevScroll = document.querySelector('.pm-strip')?.scrollLeft || 0;
   document.getElementById('board').innerHTML = `<div class="pm-strip">${stripHtml}</div>${detailHtml}`;
+  const strip = document.querySelector('.pm-strip');
+  if (strip) strip.scrollLeft = prevScroll;
 }
 
 function selectBoardGame(id) {
