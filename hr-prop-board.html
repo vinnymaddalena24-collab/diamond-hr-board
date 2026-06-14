@@ -1011,7 +1011,7 @@ function buildSprayRow(player) {
   } else {
     inner = buildSprayInner(player, events, homeTeam);
   }
-  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="13">${inner}</td></tr>`;
+  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="11">${inner}</td></tr>`;
 }
 
 function setSprayFilter(playerName, f) {
@@ -1680,7 +1680,7 @@ function renderGameDetail(g, players) {
     </button>
   </div>`;
 
-  const sectionHeader = `<tr class="section-row"><td colspan="13">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
+  const sectionHeader = `<tr class="section-row"><td colspan="11">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
   const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
     + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
 
@@ -1697,9 +1697,7 @@ function renderGameDetail(g, players) {
           <th class="c" onclick="setSort('hrPerK')">HR/K <span class="th-sort${sortCol==='hrPerK'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('ISO')">ISO</th>
           <th class="c" onclick="setSort('xwOBA')">xwOBA</th>
-          <th class="c" onclick="setSort('barrel')">Brl/BIP <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('whiffPct')">SwStr%</th>
-          <th class="c" onclick="setSort('sweetSpot')">Sweet%</th>
           <th class="c" onclick="setSort('flyBall')">FB%</th>
           <th class="c" onclick="setSort('hardHit')">HH%</th>
           <th class="c" onclick="setSort('la')">LA</th>
@@ -1865,12 +1863,8 @@ function playerRow(p, g) {
   ${kCell(p.ISO, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .220, .155)}
   <!-- xwOBA -->
   ${kCell(p.xwOBA, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .360, .310)}
-  <!-- Brl/BIP% -->
-  ${kCell(p.barrel, v => v.toFixed(1)+'%', 10, 6)}
   <!-- SwStr% (inverted: lower = better) -->
   ${kCell(p.whiffPct, v => v.toFixed(0)+'%', 20, 27, true)}
-  <!-- Sweet Spot% -->
-  ${kCell(p.sweetSpot, v => v.toFixed(0)+'%', 38, 33)}
   <!-- FB% -->
   ${kCell(p.flyBall, v => v.toFixed(0)+'%', 38, 32)}
   <!-- HH% -->
