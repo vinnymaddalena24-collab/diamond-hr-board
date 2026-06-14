@@ -1994,7 +1994,9 @@ function selectBoardGame(id) {
 function setSort(col) {
   if(sortCol===col) sortDir = sortDir==='desc'?'asc':'desc';
   else { sortCol=col; sortDir='desc'; }
+  const sy = window.scrollY;
   render();
+  window.scrollTo(0, sy);
 }
 
 function scrollToGame(id) {
