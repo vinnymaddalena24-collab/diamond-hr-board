@@ -527,7 +527,10 @@ def fetch_batting_stats_savant():
                         row.get("whiff_percent") or row.get("whiff")),
                     "k_pct":          _safe_float(
                         row.get("k_percent") or row.get("strikeout_percent")),
-                    "xwoba": 0.0, "xslg": 0.0, "pull_pct": 40.0,
+                    "pull_pct":       _safe_float(
+                        row.get("pull_percent") or row.get("pulled_percent")
+                        or row.get("pull")) or 40.0,
+                    "xwoba": 0.0, "xslg": 0.0, "xhr": 0.0,
                 }
                 if pid: id_map[pid] = name
             except: continue
@@ -540,6 +543,7 @@ def fetch_batting_stats_savant():
                 if key:
                     result[key]["xwoba"] = _safe_float(row.get("est_woba"))
                     result[key]["xslg"]  = _safe_float(row.get("est_slg"))
+                    result[key]["xhr"]   = _safe_float(row.get("est_hr") or row.get("xhrs") or row.get("est_home_runs"))
         except Exception as e:
             print(f"[expected_stats] Error: {e}")
         cache_set("savant_batting", result)
@@ -707,7 +711,9 @@ def fetch_batting_season_stats():
                 "PA": pa_raw,
                 "SO": int(stat.get("strikeOuts", 0) or 0),
                 "airOutPct": fb_proxy,
-                "hrPerK": round(hr / max(int(stat.get("strikeOuts", 0) or 0), 1), 3),
+                "hrPerK":  round(hr / max(int(stat.get("strikeOuts", 0) or 0), 1), 3),
+                # HR/FB%: what % of fly balls become HRs (elite >20%, avg ~13%)
+                "hrFbPct": round(hr / max(hr + air_outs, 1) * 100, 1),
             }
 
         cache_set("batting_stats", result)
@@ -1678,8 +1684,11 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     sweet    = savant_stats.get("sweet_spot_pct", 36)
     pull_pct = savant_stats.get("pull_pct", 40)
     xwoba    = savant_stats.get("xwoba", 0)
+    xhr      = savant_stats.get("xhr", 0)          # expected HRs from Statcast
     fb_pct   = savant_stats.get("fly_ball_pct") or batter_stats.get("airOutPct") or 0
-    whiff_pct = savant_stats.get("whiff_pct") or 0     # overall swing-and-miss rate
+    whiff_pct = savant_stats.get("whiff_pct") or 0
+    hr_fb_pct = batter_stats.get("hrFbPct", 0)     # HR/FB%: HR÷(HR+airOuts), elite >20%
+    actual_hr = batter_stats.get("HR", 0)
     bats     = batter_stats.get("bats", "R")
     ph       = pitcher_stats.get("hand", "R")
 
@@ -1719,11 +1728,22 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     profile += min(hr_pct * 1.8, 20)
     profile += min((ops - 0.600) * 28, 14)
     profile += min((slg - 0.350) * 22, 10)
-    profile += min((barrel - 8) * 1.5, 14)     # barrel is the best HR predictor — doubled weight
-    profile += min((xwoba - 0.320) * 22, 8)    # xwOBA captures quality of contact holistically
+    profile += min((barrel - 8) * 1.5, 14)     # barrel is the best HR predictor
+    profile += min((xwoba - 0.320) * 22, 8)    # xwOBA: quality of contact holistically
     profile += min((hard_hit - 40) * 0.20, 5)
     profile += min((iso - 0.180) * 18, 4)
     profile += min((sweet - 36) * 0.15, 2)
+    # HR/FB%: what % of fly balls become HRs — elite >20%, league avg ~13%
+    if hr_fb_pct > 13:
+        profile += min((hr_fb_pct - 13) * 0.5, 8)
+    # xHR gap: if player has significantly more xHR than actual HR, they're "due"
+    # Scale xHR to per-game rate vs actual, only apply when sample is meaningful
+    if xhr > 0 and actual_hr > 0 and pa_per_g > 0:
+        xhr_gap = xhr - actual_hr   # positive = underperforming expected HRs
+        if xhr_gap > 3:
+            profile += min(xhr_gap * 0.8, 6)   # due for upward regression
+        elif xhr_gap < -3:
+            profile -= min(abs(xhr_gap) * 0.5, 4)  # running hot, likely to cool
     # Fly ball rate: more fly balls = more HR chances (league avg ~35%)
     if fb_pct > 30:
         profile += min((fb_pct - 30) * 0.30, 6)
@@ -1744,8 +1764,15 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
     k9  = pitcher_stats.get("k9", 8.5)
+    hr9 = pitcher_stats.get("hr9", 1.10)   # HRs allowed per 9 IP (league avg ~1.1)
+    gb_ratio = pitcher_stats.get("gbPct", 1.0)  # GO/AO ratio; >1.5 = strong GB pitcher
     pv  = 28 + (era - 3.5) * 5.5
     pv += (fb - 38) * 0.35
+    # HR/9: most direct measure of HR vulnerability (each +0.3 above avg ≈ +4 pts)
+    pv += (hr9 - 1.10) * 13
+    # Ground ball pitchers suppress HRs below what ERA suggests (GO/AO > 1.5)
+    if gb_ratio > 1.5:
+        pv -= min((gb_ratio - 1.5) * 4, 8)
     if vel < 91: pv += 3
     if q == "danger": pv += 16
     if q == "elite":  pv -= 12
@@ -2242,6 +2269,8 @@ def _do_build(date_str):
                 "pitcherK9":        round(opp_pitcher.get("k9", 8.5), 1),
                 "kPct":             round(bat_stat.get("SO", 0) / max(bat_stat.get("PA", 1), 1) * 100, 1),
                 "hrPerK":           bat_stat.get("hrPerK", 0),
+                "hrFbPct":          bat_stat.get("hrFbPct", 0),
+                "xhr":              sav.get("xhr", 0),
                 "pitcher":          opp_pitcher.get("name", "TBD"),
                 "pitcherEra":       opp_pitcher.get("era", 4.50),
                 "pitcherRecentEra": round(pitcher_log.get("recent_era", opp_pitcher.get("era", 4.50)), 2),

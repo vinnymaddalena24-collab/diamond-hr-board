@@ -1011,7 +1011,7 @@ function buildSprayRow(player) {
   } else {
     inner = buildSprayInner(player, events, homeTeam);
   }
-  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="11">${inner}</td></tr>`;
+  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="12">${inner}</td></tr>`;
 }
 
 function setSprayFilter(playerName, f) {
@@ -1159,7 +1159,7 @@ async function loadDay(dateObj) {
     serverInjuries= data.injuryList || [];
     bustPlayersCache();
     function _mapPitcher(p) {
-      if(!p) return {n:'TBD',h:'R',era:4.50,fb:38,vel:92.5,q:'mid',recentEra:4.50,fatigued:false,starts:[],arsenal:{},k9:0,bb9:0,whip:0,fip:0,kPct:0,bbPct:0,kbbPct:0,strikePct:0,pitchPerIP:0,ip:0,gs:0,daysRest:5,lastPitches:0,xwoba_against:0,xera:0,barrel_allowed:0,hard_hit_allowed:0,avg_ev_against:0,sweet_spot_against:0};
+      if(!p) return {n:'TBD',h:'R',era:4.50,fb:38,vel:92.5,q:'mid',recentEra:4.50,fatigued:false,starts:[],arsenal:{},k9:0,bb9:0,whip:0,fip:0,kPct:0,bbPct:0,kbbPct:0,strikePct:0,pitchPerIP:0,ip:0,gs:0,daysRest:5,lastPitches:0,xwoba_against:0,xera:0,barrel_allowed:0,hard_hit_allowed:0,avg_ev_against:0,sweet_spot_against:0,hr9:1.1,gbPct:1.0};
       return {
         n:   p.name, h: p.hand||'R', era: p.era||4.50,
         fb:  p.fbPct||38, vel: p.vel||92.5, q: p.quality||'mid',
@@ -1180,6 +1180,8 @@ async function loadDay(dateObj) {
         pitchPerIP: p.pitchPerIP || 0,
         ip:         p.ip         || 0,
         gs:         p.gs         || 0,
+        hr9:                p.hr9                || 1.1,
+        gbPct:              p.gbPct              || 1.0,
         xwoba_against:      p.xwoba_against      || 0,
         xera:               p.xera               || 0,
         barrel_allowed:     p.barrel_allowed      || 0,
@@ -1354,6 +1356,8 @@ function buildPlayers(g) {
       pitcherK9:  sp.pitcherK9  || 0,
       kPct:       sp.kPct       || 0,
       hrPerK:     sp.hrPerK     || 0,
+      hrFbPct:    sp.hrFbPct    || 0,
+      xhr:        sp.xhr        || 0,
       gamesSinceHR:  sp.gamesSinceHR  || 0,
       lastGameH:     sp.lastGameH     || 0,
       lastGameAB:    sp.lastGameAB    || 0,
@@ -1680,7 +1684,7 @@ function renderGameDetail(g, players) {
     </button>
   </div>`;
 
-  const sectionHeader = `<tr class="section-row"><td colspan="11">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
+  const sectionHeader = `<tr class="section-row"><td colspan="12">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
   const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
     + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
 
@@ -1700,6 +1704,7 @@ function renderGameDetail(g, players) {
           <th class="c" onclick="setSort('whiffPct')">SwStr%</th>
           <th class="c" onclick="setSort('flyBall')">FB%</th>
           <th class="c" onclick="setSort('hardHit')">HH%</th>
+          <th class="c" onclick="setSort('hrFbPct')">HR/FB <span class="th-sort${sortCol==='hrFbPct'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('la')">LA</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
@@ -1869,6 +1874,8 @@ function playerRow(p, g) {
   ${kCell(p.flyBall, v => v.toFixed(0)+'%', 38, 32)}
   <!-- HH% -->
   ${kCell(p.hardHit, v => v.toFixed(0)+'%', 48, 38)}
+  <!-- HR/FB% — elite >20%, avg ~13% -->
+  ${kCell(p.hrFbPct, v => v.toFixed(0)+'%', 20, 13)}
   <!-- Launch Angle -->
   ${laCell(p.la)}
 </tr>`;
@@ -2107,6 +2114,7 @@ function renderPitchersTab() {
         ${kstCell(p.whip,      'WHIP',    1.1, 1.3, true,  v => v.toFixed(2))}
         ${kstCell(p.k9,        'K/9',     10,  8,   false, v => v.toFixed(1))}
         ${kstCell(p.bb9,       'BB/9',    0,   3.5, true,  v => v.toFixed(1))}
+        ${kstCell(p.hr9||0,    'HR/9',    0,   0.9, true,  v => v.toFixed(2))}
         ${kstCell(p.kPct||0,   'K%',      28,  22,  false, v => v.toFixed(0)+'%')}
         ${kstCell(p.bbPct||0,  'BB%',     0,   8,   true,  v => v.toFixed(0)+'%')}
       </div>
