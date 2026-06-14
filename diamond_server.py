@@ -34,6 +34,7 @@ SPLITS_TTL   = 3600  # 1 hour — splits rarely change intraday
 HISTORY_FILE = os.environ.get("HISTORY_PATH", os.path.join("/tmp", "diamond_history.json"))
 API_TIMEOUT  = 5     # seconds — hard cap on all external API calls
 BATCH_TIMEOUT = 22   # seconds — MLB Stats API only (Savant is background); ~100 calls / 40 workers
+LEAGUE_HR_PA  = 0.033  # MLB league average HR per plate appearance (~2024-2026)
 USER_AGENT   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 _SAVANT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -411,6 +412,8 @@ def fetch_pitcher_stats(pitcher_id):
             "whip":    float(s.get("whip", 1.30)),
             "fip":     fip,
             "hr9":     float(s.get("homeRunsPer9", 1.10)),
+            "hrAllowed": hr,
+            "bf":      bf,
             "k9":      float(s.get("strikeoutsPer9", 7.5)),
             "bb9":     float(s.get("walksPer9", 3.0)),
             "kPct":    round(k / bf * 100, 1),
@@ -1088,9 +1091,104 @@ def fetch_pitcher_savant_allowed():
         return {}
 
 def hr_probability(score):
-    """Map 0–99 composite score to estimated HR probability % per game."""
+    """Fallback heuristic — replaced by simulate_hr_game for real probability."""
     prob = 1.5 + (score / 99) ** 1.75 * 29.5
     return round(max(1.0, min(32.0, prob)), 1)
+
+
+def log5_hr_pa(batter_hr_pa, pitcher_hr_pa):
+    """
+    Bill James Log5: combine independent batter + pitcher rates vs league average.
+    Returns expected HR/PA for this specific matchup.
+    """
+    bA  = max(0.001, batter_hr_pa)
+    bB  = max(0.001, pitcher_hr_pa)
+    bL  = LEAGUE_HR_PA
+    num = bA * bB / bL
+    den = num + (1 - bA) * (1 - bB) / (1 - bL)
+    return num / den if den > 0 else bL
+
+
+def simulate_hr_game(bat_stat, sav, pitcher_stats, pf, wx,
+                     recent_stat=None, platoon_val=0, lineup_pos=0,
+                     bats="R", home_team=""):
+    """
+    Log5 + binomial simulation for real HR probability in a single game.
+    Returns {"simProb": %, "simExp": expected HRs, "simDist": {p0,p1,p2,p3plus}, "pHRperPA": %}.
+    """
+    # ── Batter HR/PA ─────────────────────────────────────────────────────────
+    hr     = bat_stat.get("HR", 0)
+    pa     = max(bat_stat.get("PA", 1), 1)
+    games  = max(bat_stat.get("G", 1), 1)
+    hr_pa_actual = hr / pa
+
+    # Statcast-expected HR/PA from barrel% (≈52% of barrels become HRs)
+    barrel_pct    = sav.get("barrel_pct", 8.0)
+    hr_pa_statcast = (barrel_pct / 100) * 0.52
+
+    # Blend: shift toward actual rate as sample size grows (80+ games = fully actual)
+    w_actual = min(games / 80, 1.0)
+    batter_hr_pa = hr_pa_actual * w_actual + hr_pa_statcast * (1 - w_actual)
+
+    # Blend in 15-day recent form (35% weight when ≥5 games)
+    if recent_stat and recent_stat.get("G_recent", 0) >= 5:
+        r_g    = recent_stat.get("G_recent", 1)
+        r_hr   = recent_stat.get("HR_recent", 0)
+        r_pa   = r_g * bat_stat.get("paPerG", 3.8)
+        r_hr_pa = r_hr / max(r_pa, 1)
+        batter_hr_pa = r_hr_pa * 0.35 + batter_hr_pa * 0.65
+
+    # ── Pitcher HR/PA ─────────────────────────────────────────────────────────
+    hr_allowed = pitcher_stats.get("hrAllowed", 0)
+    bf         = pitcher_stats.get("bf", 0)
+    hr9        = pitcher_stats.get("hr9", 1.10)
+    if bf >= 50 and hr_allowed > 0:
+        pitcher_hr_pa = hr_allowed / bf           # most accurate when sample exists
+    else:
+        pitcher_hr_pa = hr9 / 30.0               # hr9 ÷ ~30 BF per 9 IP
+
+    # ── Log5 matchup probability ───────────────────────────────────────────────
+    p_pa = log5_hr_pa(batter_hr_pa, pitcher_hr_pa)
+
+    # ── Situational multipliers ───────────────────────────────────────────────
+    p_pa *= (max(pf, 50) / 100) ** 0.7           # park factor (dampened)
+    temp = wx.get("temp", 72)
+    p_pa *= 1 + (temp - 72) * 0.002              # temperature carry
+    wx_wind = wind_adj(wx)
+    p_pa *= 1 + max(0, wx_wind) * 0.018          # tailwind only
+    pull_pct = sav.get("pull_pct", 40.0)
+    spray_bonus = calc_spray_park_adj(bats, home_team, pull_pct)
+    p_pa *= 1 + spray_bonus * 0.008              # pull angle vs park walls
+    if platoon_val != 0:
+        p_pa *= 1 + platoon_val * 0.004          # platoon edge
+
+    # ── Expected plate appearances this game ──────────────────────────────────
+    pa_per_g = bat_stat.get("paPerG", 3.8)
+    if lineup_pos in (1, 2, 3, 4):
+        pa_per_g = min(pa_per_g * 1.08, 5.2)    # top-order bats more
+    elif lineup_pos in (7, 8, 9):
+        pa_per_g = max(pa_per_g * 0.94, 3.0)
+
+    # ── Binomial: P(≥1 HR in N plate appearances) ─────────────────────────────
+    p_pa = max(0.001, min(0.25, p_pa))
+    N    = pa_per_g
+    p0     = (1 - p_pa) ** N
+    p1     = N * p_pa * (1 - p_pa) ** (N - 1)
+    p2     = (N * (N - 1) / 2) * (p_pa ** 2) * (1 - p_pa) ** (N - 2)
+    p3plus = max(0.0, 1 - p0 - p1 - p2)
+
+    return {
+        "simProb":  round((1 - p0) * 100, 1),
+        "simExp":   round(N * p_pa, 3),
+        "simDist":  {
+            "p0":     round(p0 * 100, 1),
+            "p1":     round(p1 * 100, 1),
+            "p2":     round(p2 * 100, 1),
+            "p3plus": round(p3plus * 100, 1),
+        },
+        "pHRperPA": round(p_pa * 100, 2),
+    }
+
 
 def ump_zone_adj(ump_name, live_ump_scores=None):
     """Zone adjustment: live UmpScorecards score first, fallback to hardcoded dict."""
@@ -2208,6 +2306,11 @@ def _do_build(date_str):
                 opp_pitcher.get("name",""), name, pitcher_arsenal, batter_pitch_data)
             # Enhanced spray angle adjustment using real park dimensions
             spray = calc_spray_park_adj(roster_info.get("bats","R"), home, sav.get("pull_pct",40))
+            plat_val = platoon_adj(
+                roster_info.get("bats", "R"),
+                opp_pitcher.get("hand", "R"),
+                platoon_data.get(name),
+            )
             score, breakdown = calc_composite(
                 bat_stat, sav, opp_pitcher, pf, wx,
                 recent_stats=recent_stat,
@@ -2227,6 +2330,14 @@ def _do_build(date_str):
                 explain=True,
             )
             tier = get_tier(score)
+            sim = simulate_hr_game(
+                bat_stat, sav, opp_pitcher, pf, wx,
+                recent_stat=recent_stat,
+                platoon_val=plat_val,
+                lineup_pos=lineup_pos,
+                bats=roster_info.get("bats", "R"),
+                home_team=home,
+            )
 
             recent_hr_pct = recent_stat.get("hrPct_recent", 0)
             hot_streak    = (recent_hr_pct > bat_stat.get("hrPct", 0) * 1.35
@@ -2295,7 +2406,10 @@ def _do_build(date_str):
                 "umpScore":         ump_score,
                 "gameTotal":        game_total,
                 "sprintSpeed":      sprint_speed.get(name, None),
-                "hrProb":           hr_probability(score),
+                "hrProb":           sim["simProb"],
+                "simExp":           sim["simExp"],
+                "simDist":          sim["simDist"],
+                "pHRperPA":         sim["pHRperPA"],
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
                 "pitchMatchup":     pitch_matchup if pitch_matchup else [],
                 "sprayAdj":         spray,
