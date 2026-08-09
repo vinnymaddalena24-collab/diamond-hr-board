@@ -115,35 +115,6 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .bb-stat{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
 .bb-stat .v{color:var(--sub);font-weight:700}
 .bb-reason{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:6px;line-height:1.5;border-top:1px solid var(--border);padding-top:5px}
-/* ── TOP PICKS STRIP ── */
-.picks-strip{border-bottom:1px solid var(--border);background:var(--surface);overflow:hidden;display:flex;align-items:center;height:52px;position:relative}
-.picks-strip-label{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);white-space:nowrap;padding:0 14px;border-right:1px solid var(--border);height:100%;display:flex;align-items:center;background:var(--surface);z-index:2;flex-shrink:0}
-.picks-ticker-wrap{flex:1;overflow:hidden;position:relative}
-.picks-ticker-wrap::before,.picks-ticker-wrap::after{content:'';position:absolute;top:0;bottom:0;width:40px;z-index:3;pointer-events:none}
-.picks-ticker-wrap::before{left:0;background:linear-gradient(to right,var(--surface),transparent)}
-.picks-ticker-wrap::after{right:0;background:linear-gradient(to left,var(--surface),transparent)}
-.picks-row{display:flex;gap:0;width:max-content;animation:ticker 32s linear infinite}
-.picks-row:hover{animation-play-state:paused}
-@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.picks-hd{display:none}
-.pick-card{flex-shrink:0;background:transparent;border-left:1px solid var(--border);padding:0 18px;display:flex;align-items:center;gap:10px;height:52px;cursor:pointer;transition:background .15s;white-space:nowrap}
-.pick-card:hover{background:rgba(255,255,255,.03)}
-.pick-card.rank1{border-left-color:rgba(245,158,11,.5)}
-.pick-photo{width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:var(--surface);flex-shrink:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;font-size:18px}
-.pick-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
-.pick-info{flex:1;min-width:0}
-.pick-rank{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:1px}
-.pick-rank.gold{color:var(--amber)}
-.pick-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pick-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:2px}
-.pick-score-wrap{text-align:center;flex-shrink:0}
-.pick-score{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:26px;line-height:1}
-.pick-tier-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;margin-top:2px}
-.pick-prob{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:1px}
-.cS .pick-score,.cS .pick-tier-lbl{color:var(--s)}
-.cA .pick-score,.cA .pick-tier-lbl{color:var(--a)}
-.cB .pick-score,.cB .pick-tier-lbl{color:var(--b)}
-.cC .pick-score,.cC .pick-tier-lbl{color:var(--c)}
 
 /* ── FILTER BAR ── */
 .filter-bar{display:flex;align-items:center;gap:5px;padding:8px 20px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.97);backdrop-filter:blur(8px);position:sticky;top:56px;z-index:100;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
@@ -315,7 +286,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
 /* ── PLAYER TABLE ── */
 .pt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.pt{width:100%;border-collapse:collapse;min-width:820px}
+table.pt{width:100%;border-collapse:collapse;min-width:560px}
 table.pt th{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.6);text-align:left;white-space:nowrap;cursor:pointer;transition:color .1s;user-select:none}
 table.pt th:hover{color:var(--blue)}
 table.pt th.r{text-align:right}
@@ -642,14 +613,6 @@ table.pt th.c{text-align:center;padding:7px 6px}
 <div class="best-bets" id="bestBets" style="display:none">
   <div class="best-bets-hd">TODAY'S BEST BETS</div>
   <div class="best-bets-grid" id="bestBetsGrid"></div>
-</div>
-
-<!-- TOP PICKS STRIP -->
-<div class="picks-strip" id="picksStrip" style="display:none">
-  <div class="picks-strip-label">⬥ TOP HR</div>
-  <div class="picks-ticker-wrap">
-    <div class="picks-row" id="picksRow"></div>
-  </div>
 </div>
 
 <!-- FILTER BAR -->
@@ -1009,7 +972,7 @@ function buildSprayRow(player) {
   } else {
     inner = buildSprayInner(player, events, homeTeam);
   }
-  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="12">${inner}</td></tr>`;
+  return `<tr class="spray-expand-row" id="spray-row-${safeName}"><td colspan="7">${inner}</td></tr>`;
 }
 
 function setSprayFilter(playerName, f) {
@@ -1136,7 +1099,7 @@ function buildingScreen() {
 async function loadDay(dateObj) {
   setStatus('loading','LOADING');
   document.getElementById('board').innerHTML = `<div class="loading-screen"><div class="loading-logo">⬥</div><div class="loading-title">Fetching Live Data</div><div class="loading-sub">${displayDate(dateObj)}</div></div>`;
-  document.getElementById('picksStrip').style.display = 'none';
+  // (picks strip removed)
   document.getElementById('injBar').innerHTML = '';
   document.getElementById('dataFooter').style.display = 'none';
   updateDateUI(dateObj);
@@ -1442,26 +1405,6 @@ function renderBestBets() {
 
 function renderPicks() {
   renderBestBets();
-  if(!serverTop5.length){ document.getElementById('picksStrip').style.display='none'; return; }
-  document.getElementById('picksStrip').style.display = '';
-  const tierColor = {S:'var(--s)',A:'var(--a)',B:'var(--b)',C:'var(--c)',D:'var(--muted)'};
-  const card = (p,i) => {
-    const t = p.tier||tierOf(p.score||0);
-    const color = tierColor[t]||'var(--sub)';
-    const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current" style="width:32px;height:32px;border-radius:50%;object-fit:cover;object-position:top center;border:2px solid ${color}40;flex-shrink:0">` : `<span style="font-size:20px">⚾</span>`;
-    return `<div class="pick-card${i===0?' rank1':''}" onclick="scrollToGame('${p.gameId||''}')" title="${p.name} — ${p.score}/99 ${t}-TIER · ${p.hrProb||0}% HR">
-      ${photo}
-      <div>
-        <div style="font-weight:700;font-size:13px;color:var(--text)">${p.name}</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub)">${p.team} · vs ${(p.pitcher||'TBD').split(' ').pop()}</div>
-      </div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;color:${color};margin-left:6px">${p.score}</div>
-      <div style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;color:${color};margin-left:2px;align-self:flex-end;padding-bottom:3px">${t}</div>
-      ${p.hrProb?`<div style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-left:4px">${p.hrProb}%</div>`:''}
-    </div>`;
-  };
-  const cards = serverTop5.map((p,i) => card(p,i)).join('');
-  document.getElementById('picksRow').innerHTML = cards + cards;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1683,7 +1626,7 @@ function renderGameDetail(g, players) {
     </button>
   </div>`;
 
-  const sectionHeader = `<tr class="section-row"><td colspan="12">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
+  const sectionHeader = `<tr class="section-row"><td colspan="7">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
   const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
     + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
 
@@ -1696,15 +1639,10 @@ function renderGameDetail(g, players) {
           <th class="td-ph"></th>
           <th onclick="setSort('name')">PLAYER <span class="th-sort${sortCol==='name'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('hrForm')">FORM <span class="th-sort${sortCol==='hrForm'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('hrPerK')">HR/K <span class="th-sort${sortCol==='hrPerK'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('ISO')">ISO</th>
-          <th class="c" onclick="setSort('xwOBA')">xwOBA</th>
-          <th class="c" onclick="setSort('whiffPct')">SwStr%</th>
+          <th class="c" onclick="setSort('hrProb')">HR PROB <span class="th-sort${sortCol==='hrProb'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('barrel')">BARREL% <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
+          <th class="c" onclick="setSort('xwOBA')">xwOBA <span class="th-sort${sortCol==='xwOBA'?' '+sortDir:''}"></span></th>
           <th class="c" onclick="setSort('flyBall')">FB%</th>
-          <th class="c" onclick="setSort('hardHit')">HH%</th>
-          <th class="c" onclick="setSort('hrFbPct')">HR/FB <span class="th-sort${sortCol==='hrFbPct'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('la')">LA</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -1835,20 +1773,16 @@ function playerRow(p, g) {
       <div class="p-photo">⚾${photo}</div>
     </div>
   </td>
-  <!-- Player cell: name + pitcher + edges -->
+  <!-- Player cell: clean name + key context only -->
   <td class="td-player">
     <div class="p-name">
       ${p.name} ${trend}
       <span class="p-team">${p.team}</span>
-      <span class="p-pos">${p.pos||'?'}</span>
       ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
       ${ydayHtml}${sinceHtml}
       ${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}
     </div>
-    <div class="p-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · Bats ${p.bats}${form7?`<span style="color:var(--amber);margin-left:4px">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>
-    ${h2hHtml}
-    ${pitchChips ? `<div style="display:flex;gap:2px;flex-wrap:wrap;margin-top:2px">${pitchChips}</div>` : ''}
-    <div class="p-edges">${edges.map(e=>`<span class="edge ${e.t}">${e.l}</span>`).join('')}</div>
+    <div class="p-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · ${p.bats}H${form7?` · <span style="color:var(--amber)">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>
   </td>
   <!-- SCORE -->
   <td class="td-score" style="text-align:center;padding:6px 8px">
@@ -1858,27 +1792,18 @@ function playerRow(p, g) {
     </div>
     <span class="tier-badge t${p.tier}">${p.tier}</span>
     <div class="prob-bar" style="margin:3px auto 0"><div class="prob-fill" style="width:${probWidth}%"></div></div>
-    ${p.hrProb > 0 ? `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:${p.hrProb>=20?'var(--green)':p.hrProb>=12?'var(--amber)':'var(--sub)'};margin-top:2px">${p.hrProb}%</div>
-    <div style="font-size:8px;color:var(--muted);letter-spacing:.03em">SIM${p.simExp>0?` · xHR ${p.simExp.toFixed(2)}`:''}</div>` : ''}
   </td>
-  <!-- HR FORM -->
-  <td class="kst ${formCls}" style="font-size:13px">${formScore > 0 ? `${formScore}%` : '—'}<br><span class="kl" style="font-size:9px">${formScore > 0 ? formArrow : ''}</span></td>
-  <!-- HR/K — higher = more HRs per strikeout (elite ≥0.25, good ≥0.15) -->
-  ${kCell(p.hrPerK, v => v.toFixed(2), 0.25, 0.15)}
-  <!-- ISO -->
-  ${kCell(p.ISO, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .220, .155)}
+  <!-- HR PROB (sim) -->
+  <td class="kst" style="font-size:15px;font-weight:700;color:${p.hrProb>=20?'var(--green)':p.hrProb>=12?'var(--amber)':'var(--sub)'};min-width:54px">
+    ${p.hrProb > 0 ? p.hrProb+'%' : '—'}
+    ${p.hrProb > 0 ? `<span class="kl">HR PROB</span>` : ''}
+  </td>
+  <!-- BARREL% -->
+  ${kCell(p.barrel, v => v.toFixed(1)+'%', 12, 8)}
   <!-- xwOBA -->
   ${kCell(p.xwOBA, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .360, .310)}
-  <!-- SwStr% (inverted: lower = better) -->
-  ${kCell(p.whiffPct, v => v.toFixed(0)+'%', 20, 27, true)}
   <!-- FB% -->
   ${kCell(p.flyBall, v => v.toFixed(0)+'%', 38, 32)}
-  <!-- HH% -->
-  ${kCell(p.hardHit, v => v.toFixed(0)+'%', 48, 38)}
-  <!-- HR/FB% — elite >20%, avg ~13% -->
-  ${kCell(p.hrFbPct, v => v.toFixed(0)+'%', 20, 13)}
-  <!-- Launch Angle -->
-  ${laCell(p.la)}
 </tr>`;
 }
 
