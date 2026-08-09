@@ -658,8 +658,6 @@ table.pt th.c{text-align:center;padding:7px 6px}
   <button class="ftab" data-tab="stars">⭐ S-TIER</button>
   <button class="ftab" data-tab="good">✅ A+ PICKS</button>
   <button class="ftab" data-tab="hot">🔥 HOT</button>
-  <button class="ftab" data-tab="platoon">⚡ PLATOON</button>
-  <button class="ftab" data-tab="soon">⏰ NEXT 3H</button>
   <button class="ftab" data-tab="pitchers">⚾ PITCHERS</button>
   <input class="fb-search" id="quickSearch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
 </div>
@@ -1555,16 +1553,14 @@ function pitcherMatchupCard(p, team) {
 
 
 function renderGameCard(g) {
-  if(activeTab==='soon' && !gameStartsWithin3Hours(g)) return '';
 
   const allPlayers = buildPlayers(g);
   let filtered = [...allPlayers].sort((a,b)=>b.score-a.score);
   if(activeTab==='stars')     filtered = filtered.filter(p=>p.score>=80);
   if(activeTab==='good')      filtered = filtered.filter(p=>p.score>=65);
   if(activeTab==='hot')       filtered = filtered.filter(p=>p.hotStreak);
-  if(activeTab==='platoon')   filtered = filtered.filter(p=>p.platoon>=8);
   if(searchQ) { const sq=searchQ.toLowerCase(); filtered=filtered.filter(p=>p.name.toLowerCase().includes(sq)||p.team.toLowerCase().includes(sq)); }
-  if(!filtered.length && activeTab!=='all' && activeTab!=='soon') return '';
+  if(!filtered.length && activeTab!=='all') return '';
 
   const isExp = expandedGames.has(g.id);
   const wx = activeWX[g.id]||{};
@@ -1911,7 +1907,6 @@ function filterPlayers(players) {
   if(activeTab==='stars')   f = f.filter(p=>p.score>=80);
   if(activeTab==='good')    f = f.filter(p=>p.score>=65);
   if(activeTab==='hot')     f = f.filter(p=>p.hotStreak);
-  if(activeTab==='platoon') f = f.filter(p=>p.platoon>=8);
   if(searchQ){ const q=searchQ.toLowerCase(); f=f.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q)); }
   return f;
 }
@@ -1921,8 +1916,7 @@ function renderBoardWithStrip() {
 
   // Only include games with qualifying players (for filter tabs)
   const qualifyingGames = activeGames.filter(g => {
-    if(activeTab==='soon' && !gameStartsWithin3Hours(g)) return false;
-    if(activeTab==='all' || activeTab==='soon') return true;
+    if(activeTab==='all') return true;
     return filterPlayers(buildPlayers(g)).length > 0;
   });
 
