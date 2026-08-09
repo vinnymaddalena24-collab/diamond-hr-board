@@ -1062,12 +1062,22 @@ def fetch_pitcher_savant_allowed():
             pid  = row.get("player_id", "").strip()
             if not name: continue
             try:
+                # Pitcher fly ball % allowed — try several possible CSV column names
+                fb_pct_val = (_safe_float(row.get("fly_ball_percent")) or
+                              _safe_float(row.get("fly_ball_pct")) or
+                              _safe_float(row.get("pfx_fb_percent")) or 0.0)
+                # Pitcher HR/FB% — (HRs allowed / fly balls allowed) * 100
+                n_hr_allowed = _safe_float(row.get("home_run") or row.get("n_hr") or 0)
+                n_fb_allowed = _safe_float(row.get("fly_ball") or row.get("n_fb_formatted") or 0)
+                hr_fb_pct_val = round(n_hr_allowed / n_fb_allowed * 100, 1) if n_fb_allowed > 5 else 0.0
                 result[name] = {
                     "barrel_allowed":    _safe_float(row.get("brl_percent") or row.get("brl_pa")),
                     "hard_hit_allowed":  _safe_float(row.get("ev95percent")),
                     "avg_ev_against":    _safe_float(row.get("avg_hit_speed")),
                     "sweet_spot_against":_safe_float(row.get("anglesweetspotpercent")),
                     "avg_la_against":    _safe_float(row.get("avg_hit_angle")),
+                    "fb_pct":            fb_pct_val,      # pitcher fly ball rate allowed
+                    "hr_fb_pct":         hr_fb_pct_val,   # pitcher HR/FB rate
                     "xwoba_against":     0.0,
                     "xera":              0.0,
                 }
@@ -1709,14 +1719,17 @@ def calc_pitch_matchup(pitcher_name, batter_name, pitcher_arsenal, batter_pitch_
         if pct < 5: continue
         b = b_stats.get(pt, {})
         pa = b.get("pa", 0)
-        if pa >= 5:
+        if pa >= 10:
+            # Reliability weight: scale up to full confidence at 60+ PA vs this pitch type
+            # Avoids over-adjusting from tiny samples (5 PA = noise, 60 PA = signal)
+            reliability = min(pa / 60.0, 1.0)
             xslg  = b.get("xslg", LEAGUE_XSLG)
             hh    = b.get("hard_hit", 35)
             whiff = b.get("whiff", 25)
             xslg_edge = xslg - LEAGUE_XSLG
             hh_edge   = (hh - 35) * 0.02
             whiff_pen = (whiff - 25) * 0.012
-            pitch_adj = (xslg_edge * 14 + hh_edge - whiff_pen) * (pct / 100) * 1.8
+            pitch_adj = (xslg_edge * 14 + hh_edge - whiff_pen) * (pct / 100) * 1.8 * reliability
             total_adj += pitch_adj
             verdict = ("CRUSHES" if xslg >= 0.500 else
                        "STRONG"  if xslg >= 0.420 else
@@ -1770,7 +1783,7 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
                    monthly_stats=None, bullpen_era=4.50,
                    pitcher_sav=None, ump_score=0.0, game_total=0.0,
                    h2h=None, pitch_matchup_adj=0, batter_platoon=None,
-                   explain=False):
+                   batter_log=None, explain=False):
 
     hr_pct   = batter_stats.get("hrPct", 0)
     ops      = batter_stats.get("OPS", 0)
@@ -1828,6 +1841,9 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     profile += min((slg - 0.350) * 22, 10)
     profile += min((barrel - 8) * 1.5, 14)     # barrel is the best HR predictor
     profile += min((xwoba - 0.320) * 22, 8)    # xwOBA: quality of contact holistically
+    xslg = savant_stats.get("xslg", 0)
+    if xslg > 0.380:                            # xSLG: expected slugging, better than actual for regression
+        profile += min((xslg - 0.380) * 14, 5)
     profile += min((hard_hit - 40) * 0.20, 5)
     profile += min((iso - 0.180) * 18, 4)
     profile += min((sweet - 36) * 0.15, 2)
@@ -1845,6 +1861,12 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     # Fly ball rate: more fly balls = more HR chances (league avg ~35%)
     if fb_pct > 30:
         profile += min((fb_pct - 30) * 0.30, 6)
+    # Power synergy: high-FB batter facing high-FB pitcher = multiplicative HR edge
+    if pitcher_sav:
+        p_fb = pitcher_sav.get("fb_pct", 0) or 38
+        if fb_pct > 38 and p_fb > 42:
+            fb_synergy = ((fb_pct - 38) * (p_fb - 42)) / 220
+            profile += min(fb_synergy, 4)
     # Whiff rate: high swing-and-miss = strikeout risk = ball never in play (league avg ~24%)
     if whiff_pct > 24:
         profile -= min((whiff_pct - 24) * 0.25, 6)
@@ -1853,19 +1875,31 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif pa_per_g < 3.0: profile -= 2
     if pull_pct > 35:
         profile += calc_spray_park_adj(bats, home_team, pull_pct)
+    # Due-factor: player's personal bounce-back pattern after a 0-fer
+    # Only apply when sample is meaningful (>=40% of their HRs come after an 0-fer)
+    if batter_log:
+        pct_after_ohfor = batter_log.get("pctAfterOhFor", 0)
+        prev_ohfor = batter_log.get("prevOhFor", False)
+        if prev_ohfor and pct_after_ohfor >= 40:
+            profile += min((pct_after_ohfor - 35) / 14.0, 2.5)  # up to +2.5 for strong bounce-back pattern
 
     # ── SITUATION: today's opportunity (increased weights — this is where VALUE hides)
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
         era = pitcher_log["recent_era"] * 0.60 + era * 0.40
-    fb  = pitcher_stats.get("fbPct", 38)
+    # Blend FIP (45%) with ERA (55%) — FIP strips luck & is more HR-predictive
+    fip = pitcher_stats.get("fip", era)
+    era_fip = era * 0.55 + min(fip, 7.0) * 0.45
+    # Use real pitcher FB% from Savant if available, else fall back to hardcoded default
+    fb  = pitcher_sav.get("fb_pct", 0) if pitcher_sav else 0
+    fb  = fb if fb > 0 else pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
     k9  = pitcher_stats.get("k9", 8.5)
     hr9 = pitcher_stats.get("hr9", 1.10)   # HRs allowed per 9 IP (league avg ~1.1)
     gb_ratio = pitcher_stats.get("gbPct", 1.0)  # GO/AO ratio; >1.5 = strong GB pitcher
-    pv  = 28 + (era - 3.5) * 5.5
-    pv += (fb - 38) * 0.35
+    pv  = 28 + (era_fip - 3.5) * 5.5
+    pv += (fb - 38) * 0.45      # real FB% now; higher weight since it's no longer a stub
     # HR/9: most direct measure of HR vulnerability (each +0.3 above avg ≈ +4 pts)
     pv += (hr9 - 1.10) * 13
     # Ground ball pitchers suppress HRs below what ERA suggests (GO/AO > 1.5)
@@ -1879,6 +1913,10 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     if pitcher_sav:
         pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
         pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
+        # Pitcher HR/FB%: what % of their fly balls become HRs (league avg ~10%)
+        p_hr_fb = pitcher_sav.get("hr_fb_pct", 0)
+        if p_hr_fb > 10:
+            pv += min((p_hr_fb - 10) * 0.30, 5)   # each pct above avg, cap +5
 
     # Handedness-adjusted park factor (LHB → RF distance matters, RHB → LF)
     effective_pf = PARK_FACTORS_HAND.get(home_team, {}).get(
@@ -1935,11 +1973,14 @@ def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
         era = pitcher_log["recent_era"] * 0.60 + era * 0.40
-    fb  = pitcher_stats.get("fbPct", 38)
+    fip = pitcher_stats.get("fip", era)
+    era_fip = era * 0.55 + min(fip, 7.0) * 0.45
+    fb  = pitcher_sav.get("fb_pct", 0) if pitcher_sav else 0
+    fb  = fb if fb > 0 else pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
     ph  = pitcher_stats.get("hand", "R")
-    pv  = 28 + (era - 3.5) * 5.5 + (fb - 38) * 0.35
+    pv  = 28 + (era_fip - 3.5) * 5.5 + (fb - 38) * 0.45
     if vel < 91:  pv += 3
     if q == "danger": pv += 16
     if q == "elite":  pv -= 12
@@ -1948,6 +1989,9 @@ def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
     if pitcher_sav:
         pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
         pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
+        p_hr_fb = pitcher_sav.get("hr_fb_pct", 0)
+        if p_hr_fb > 10:
+            pv += min((p_hr_fb - 10) * 0.30, 5)
     s = max(0, min(100, pv)) * 0.25
     s += ((pf - 100) / 50) * 12
     s += wind_adj(wx) * 0.70
@@ -2327,6 +2371,7 @@ def _do_build(date_str):
                 h2h=h2h,
                 pitch_matchup_adj=p_adj,
                 batter_platoon=platoon_data.get(name),
+                batter_log=bgl,
                 explain=True,
             )
             tier = get_tier(score)
