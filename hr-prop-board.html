@@ -285,7 +285,12 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .pc-start{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:8px;padding:3px 0;border-bottom:1px solid rgba(30,48,80,.5)}
 
 /* ── PLAYER CARDS ── */
-.player-cards{display:flex;flex-direction:column;gap:5px;padding:10px 12px 14px}
+/* Two-column game layout */
+.game-cols{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}
+.game-col{border-right:1px solid var(--border);min-width:0}
+.game-col:last-child{border-right:none}
+@media(max-width:600px){.game-cols{grid-template-columns:1fr}.game-col{border-right:none;border-bottom:1px solid var(--border)}.game-col:last-child{border-bottom:none}}
+.player-cards{display:flex;flex-direction:column;gap:5px;padding:8px 10px 12px}
 .player-card{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:8px;padding:8px 10px;transition:border-color .12s}
 .player-card:hover{border-color:var(--border2)}
 .player-card.tS{border-left-color:var(--green)}
@@ -1586,40 +1591,32 @@ function renderGameDetail(g, players) {
 
   const awayPlayers = players.filter(p=>p.team===g.aw).sort(sortFn);
   const homePlayers = players.filter(p=>p.team===g.hm).sort(sortFn);
-  const matched = new Set([...awayPlayers,...homePlayers].map(p=>p.name));
-  const rest = players.filter(p=>!matched.has(p.name)).sort(sortFn);
 
-  // Determine active side
-  const activeSide = gameTeamTab[g.id] || 'away';
-  const activePlayers = activeSide === 'away' ? awayPlayers : homePlayers;
-  const activeAbbr = activeSide === 'away' ? g.aw : g.hm;
-  const opp = activeSide === 'away' ? g.hp : g.ap;
-  const oppName = opp ? opp.n : '?';
-  const oppEra  = opp ? opp.era.toFixed(2) : '?.??';
-  const oppK9   = opp && opp.k9 > 0 ? ` · ${opp.k9.toFixed(1)} K/9` : '';
-  const oppHand = opp ? ` · ${opp.h}HP` : '';
+  const awayPitcher = g.hp; // away batters face home pitcher
+  const homePitcher = g.ap; // home batters face away pitcher
 
-  const awayCount = awayPlayers.length;
-  const homeCount = homePlayers.length;
+  function pitcherLabel(p) {
+    if (!p || p.n === 'TBD') return 'TBD';
+    const hand = p.h ? ` · ${p.h}HP` : '';
+    const k9 = p.k9 > 0 ? ` · ${p.k9.toFixed(1)} K/9` : '';
+    return `${p.n} (${p.era.toFixed(2)} ERA${hand}${k9})`;
+  }
 
-  const teamTabs = `<div class="gc-team-tabs">
-    <button class="gc-ttab${activeSide==='away'?' on':''}" onclick="switchGameTeam('${g.id}','away',event)">
-      ${g.aw} <span class="gc-ttab-ct">${awayCount}</span>
-    </button>
-    <button class="gc-ttab${activeSide==='home'?' on':''}" onclick="switchGameTeam('${g.id}','home',event)">
-      ${g.hm} <span class="gc-ttab-ct">${homeCount}</span>
-    </button>
-  </div>`;
-
-  const sectionLabel = `<div class="pcards-section-lbl">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</div>`;
-  const cards = activePlayers.map(p=>playerCard(p,g)).join('')
-    + (rest.length && activeSide==='away' ? rest.map(p=>playerCard(p,g)).join('') : '');
+  const awayLabel = `<div class="pcards-section-lbl">${g.aw} — vs ${pitcherLabel(awayPitcher)}</div>`;
+  const homeLabel = `<div class="pcards-section-lbl">${g.hm} — vs ${pitcherLabel(homePitcher)}</div>`;
 
   return `<div class="gc-detail">
-    ${teamTabs}
-    ${umpName ? `<div style="padding:6px 14px 2px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
-    ${sectionLabel}
-    <div class="player-cards">${cards}</div>
+    ${umpName ? `<div style="padding:6px 14px 4px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
+    <div class="game-cols">
+      <div class="game-col">
+        ${awayLabel}
+        <div class="player-cards">${awayPlayers.map(p=>playerCard(p,g)).join('')}</div>
+      </div>
+      <div class="game-col">
+        ${homeLabel}
+        <div class="player-cards">${homePlayers.map(p=>playerCard(p,g)).join('')}</div>
+      </div>
+    </div>
   </div>`;
 }
 
