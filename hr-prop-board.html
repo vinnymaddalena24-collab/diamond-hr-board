@@ -284,32 +284,23 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .pc-starts{display:flex;flex-direction:column;gap:2px}
 .pc-start{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:8px;padding:3px 0;border-bottom:1px solid rgba(30,48,80,.5)}
 
-/* ── PLAYER TABLE ── */
-.pt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table.pt{width:100%;border-collapse:collapse;min-width:560px}
-table.pt th{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--border);background:rgba(6,12,24,.6);text-align:left;white-space:nowrap;cursor:pointer;transition:color .1s;user-select:none}
-table.pt th:hover{color:var(--blue)}
-table.pt th.r{text-align:right}
-table.pt th.c{text-align:center;padding:7px 6px}
-/* Kasper-style heat-map stat cells */
-.kst{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;text-align:center;padding:6px 8px;white-space:nowrap;min-width:54px;color:var(--sub);vertical-align:middle}
-.kst .kl{font-size:7px;letter-spacing:.5px;display:block;font-weight:400;color:var(--muted);margin-top:1px;text-transform:uppercase}
-.kst.kg{background:rgba(16,185,129,.13);color:#34d399}
-.kst.ka{background:rgba(245,158,11,.13);color:#f59e0b}
-.kst.kr{background:rgba(239,68,68,.13);color:#f87171}
-/* Per-team section header inside game table */
-.tm-hd td{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);padding:5px 10px 3px;text-transform:uppercase;border-top:1px solid var(--border);background:rgba(6,12,24,.55)}
-/* Compact edge chips inside player cell */
-.p-edges{display:flex;flex-wrap:wrap;gap:2px;margin-top:3px}
-.th-sort{margin-left:3px;opacity:.4}
-.th-sort.asc::after{content:'↑'} .th-sort.desc::after{content:'↓'}
-.section-row td{padding:4px 10px 3px!important;background:rgba(6,12,24,.7);font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);border-top:1px solid var(--border)}
-.pr{cursor:pointer;border-bottom:1px solid var(--dim);transition:background .07s}
-.pr:hover .p-photo{border-color:var(--blue)!important}
-.pr:hover{background:rgba(59,130,246,.04)}
-.pr.sel{background:rgba(245,158,11,.07)}
-.pr.sel .sel-dot{background:var(--amber)!important;border-color:var(--amber)!important}
-.pr td{padding:6px 10px;vertical-align:middle}
+/* ── PLAYER CARDS ── */
+.player-cards{display:flex;flex-direction:column;gap:5px;padding:10px 12px 14px}
+.player-card{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--border);border-radius:8px;padding:8px 10px;transition:border-color .12s}
+.player-card:hover{border-color:var(--border2)}
+.player-card.tS{border-left-color:var(--green)}
+.player-card.tA{border-left-color:var(--amber)}
+.player-card.tB{border-left-color:var(--orange)}
+.player-card.tC{border-left-color:var(--blue)}
+.player-card.tD{border-left-color:var(--dim)}
+.pcard-mid{flex:1;min-width:0}
+.pcard-name{font-size:13px;font-weight:700;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pcard-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sub);margin-top:3px}
+.pcard-right{text-align:center;flex-shrink:0;min-width:48px}
+.pcard-prob{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:3px}
+.pcard-prob.green{color:var(--green);font-weight:700}
+.pcard-prob.amber{color:var(--amber);font-weight:700}
+.pcards-section-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;padding:8px 12px 2px;border-top:1px solid var(--border)}
 
 /* Photo cell */
 .td-ph{width:52px;padding:5px 4px 5px 10px!important}
@@ -1626,27 +1617,15 @@ function renderGameDetail(g, players) {
     </button>
   </div>`;
 
-  const sectionHeader = `<tr class="section-row"><td colspan="7">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</td></tr>`;
-  const tableRows = sectionHeader + activePlayers.map(p=>playerRow(p,g)).join('')
-    + (rest.length && activeSide==='away' ? rest.map(p=>playerRow(p,g)).join('') : '');
+  const sectionLabel = `<div class="pcards-section-lbl">${activeAbbr} BATTERS — vs ${oppName} (${oppEra} ERA${oppHand}${oppK9})</div>`;
+  const cards = activePlayers.map(p=>playerCard(p,g)).join('')
+    + (rest.length && activeSide==='away' ? rest.map(p=>playerCard(p,g)).join('') : '');
 
   return `<div class="gc-detail">
     ${teamTabs}
-    ${umpName ? `<div style="padding:0 16px 6px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
-    <div class="pt-wrap">
-      <table class="pt">
-        <thead><tr>
-          <th class="td-ph"></th>
-          <th onclick="setSort('name')">PLAYER <span class="th-sort${sortCol==='name'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('score')">SCORE <span class="th-sort${sortCol==='score'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('hrProb')">HR PROB <span class="th-sort${sortCol==='hrProb'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('barrel')">BARREL% <span class="th-sort${sortCol==='barrel'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('xwOBA')">xwOBA <span class="th-sort${sortCol==='xwOBA'?' '+sortDir:''}"></span></th>
-          <th class="c" onclick="setSort('flyBall')">FB%</th>
-        </tr></thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </div>
+    ${umpName ? `<div style="padding:6px 14px 2px"><span class="cbdg ump">⚖ ${umpName}</span></div>` : ''}
+    ${sectionLabel}
+    <div class="player-cards">${cards}</div>
   </div>`;
 }
 
@@ -1672,21 +1651,8 @@ function laCell(la) {
   return `<td class="kst ${cls}">${la.toFixed(0)}°</td>`;
 }
 
-function playerRow(p, g) {
-  const sel = false;
+function playerCard(p, g) {
   const photo = p.mlbId ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">` : '';
-  const sc = scoreColor(p.tier);
-  const edges = computeEdges(p, g);
-  const probWidth = Math.min(100, (p.hrProb||0) / 35 * 100);
-
-  // H2H display
-  let h2hHtml = '';
-  if(p.h2h && p.h2h.ab >= 3) {
-    const h2hColor = p.h2h.hr >= 1 ? 'var(--green)' : p.h2h.ops <= 0.45 ? 'var(--red)' : 'var(--sub)';
-    h2hHtml = `<div class="vs-h2h" style="color:${h2hColor}">${p.h2h.h}/${p.h2h.ab} AB · ${p.h2h.hr}HR · .${String(Math.round((p.h2h.ops||0)*1000)).padStart(3,'0')} H2H</div>`;
-  }
-
-  const legData = JSON.stringify({name:p.name,team:p.team,gameId:p.gameId,score:p.score,pitcher:p.pitcher.n,hrPct:p.hrPct,barrel:p.barrel,hrProb:p.hrProb||0});
 
   // Score breakdown tooltip — use server breakdown if available, else derive from client data
   const bd = p.scoreBreakdown || null;
@@ -1746,65 +1712,38 @@ function playerRow(p, g) {
   </div>` : '';
 
   const trend = trendHtml(p);
-  const form7 = (p.recentG7d >= 3 && p.recentHR7d > 0) ? `· ${p.recentHR7d}HR/${p.recentG7d}G` : '';
+  const form7 = (p.recentG7d >= 3 && p.recentHR7d > 0) ? `${p.recentHR7d}HR/${p.recentG7d}G` : '';
 
-  // Day-before indicator
   const ydayStr = p.lastGameAB > 0 ? `${p.lastGameH}/${p.lastGameAB}` : null;
   const ydayCls = p.prevOhFor ? 'yday-ohfor' : (p.lastGameHR > 0 ? 'yday-hr' : 'yday-norm');
   const ydayHtml = ydayStr ? `<span class="p-yday ${ydayCls}" title="Last game: ${p.lastGameH}-for-${p.lastGameAB}${p.lastGameHR>0?' (HR)':''}">${ydayStr}${p.lastGameHR>0?' ⚡':''}</span>` : '';
   const sinceHtml = p.gamesSinceHR >= 5 ? `<span class="p-since-hr" title="${p.gamesSinceHR} games without a HR">${p.gamesSinceHR}G↯</span>` : '';
 
-  // HR Form: (recent15d HR rate / season HR rate) × 50, where 50 = exactly on pace
-  const formScore = p.hrPct > 0 ? Math.min(99, Math.max(0, Math.round(p.recentHRPct / p.hrPct * 50))) : 0;
-  const formArrow = p.trend >= 2 ? '↑↑' : p.trend >= 1 ? '↑' : p.trend <= -2 ? '↓↓' : p.trend <= -1 ? '↓' : '→';
-  const formCls   = formScore >= 60 ? 'kg' : formScore >= 40 ? 'ka' : (formScore > 0 ? 'kr' : '');
+  const probCls = p.hrProb >= 20 ? 'green' : p.hrProb >= 12 ? 'amber' : '';
 
-  // Pitch matchup chips (compact)
-  const pitchChips = p.pitchMatchup && p.pitchMatchup.length ? p.pitchMatchup.slice(0,3).map(m => {
-    const c = m.verdict==='CRUSHES'?'#10B981':m.verdict==='STRUGGLES'?'#EF4444':'#475569';
-    const bg = m.verdict==='CRUSHES'?'rgba(16,185,129,.1)':m.verdict==='STRUGGLES'?'rgba(239,68,68,.1)':'rgba(71,85,105,.08)';
-    return `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:${bg};color:${c};border:1px solid ${c}40;white-space:nowrap">${m.name.split(' ')[0]} ${m.pct}%</span>`;
-  }).join('') : '';
-
-  return `<tr class="pr">
-  <!-- Photo -->
-  <td class="td-ph">
+  return `<div class="player-card t${p.tier}">
     <div class="p-photo-wrap">
       <div class="p-photo">⚾${photo}</div>
     </div>
-  </td>
-  <!-- Player cell: clean name + key context only -->
-  <td class="td-player">
-    <div class="p-name">
-      ${p.name} ${trend}
-      <span class="p-team">${p.team}</span>
-      ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
-      ${ydayHtml}${sinceHtml}
-      ${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}
+    <div class="pcard-mid">
+      <div class="pcard-name">
+        ${p.name} ${trend}
+        <span class="p-team">${p.team}</span>
+        ${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}
+        ${ydayHtml}${sinceHtml}
+        ${yesterdayResults.hasOwnProperty(p.name)?`<span class="p-hit-badge ${yesterdayResults[p.name]?'hit':'miss'}">${yesterdayResults[p.name]?'✓ HR':'✗'}</span>`:''}
+      </div>
+      <div class="pcard-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · ${p.bats}H${form7?` · <span style="color:var(--amber)">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>
     </div>
-    <div class="p-sub">${p.HR}HR · ${p.hrPct.toFixed(1)}% · ${p.bats}H${form7?` · <span style="color:var(--amber)">${form7}</span>`:''}${p.hotStreak?' · 🔥':''}</div>
-  </td>
-  <!-- SCORE -->
-  <td class="td-score" style="text-align:center;padding:6px 8px">
-    <div class="score-wrap">
-      <div class="score-num score-${p.tier}" style="font-size:20px">${p.score}</div>
-      ${tipHtml}
+    <div class="pcard-right">
+      <div class="score-wrap">
+        <div class="score-num score-${p.tier}">${p.score}</div>
+        ${tipHtml}
+      </div>
+      <span class="tier-badge t${p.tier}">${p.tier}</span>
+      ${p.hrProb > 0 ? `<div class="pcard-prob ${probCls}">${p.hrProb}%</div>` : ''}
     </div>
-    <span class="tier-badge t${p.tier}">${p.tier}</span>
-    <div class="prob-bar" style="margin:3px auto 0"><div class="prob-fill" style="width:${probWidth}%"></div></div>
-  </td>
-  <!-- HR PROB (sim) -->
-  <td class="kst" style="font-size:15px;font-weight:700;color:${p.hrProb>=20?'var(--green)':p.hrProb>=12?'var(--amber)':'var(--sub)'};min-width:54px">
-    ${p.hrProb > 0 ? p.hrProb+'%' : '—'}
-    ${p.hrProb > 0 ? `<span class="kl">HR PROB</span>` : ''}
-  </td>
-  <!-- BARREL% -->
-  ${kCell(p.barrel, v => v.toFixed(1)+'%', 12, 8)}
-  <!-- xwOBA -->
-  ${kCell(p.xwOBA, v => '.'+String(Math.round(v*1000)).padStart(3,'0'), .360, .310)}
-  <!-- FB% -->
-  ${kCell(p.flyBall, v => v.toFixed(0)+'%', 38, 32)}
-</tr>`;
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════
