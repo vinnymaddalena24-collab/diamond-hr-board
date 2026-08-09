@@ -1582,13 +1582,7 @@ function renderGameDetail(g, players) {
   const sp0 = g.serverPlayers && g.serverPlayers[0];
   const umpName = sp0 ? (sp0.hpUmp||'') : '';
 
-  const sortFn = (a,b) => {
-    const col = sortCol||'score';
-    const av = a[col]||0, bv = b[col]||0;
-    const inv = col === 'whiffPct';
-    const dir = sortDir==='asc' ? 1 : -1;
-    return inv ? (av - bv) * dir : (bv - av) * dir;
-  };
+  const sortFn = (a,b) => (b.score||0) - (a.score||0);
 
   const awayPlayers = players.filter(p=>p.team===g.aw).sort(sortFn);
   const homePlayers = players.filter(p=>p.team===g.hm).sort(sortFn);
