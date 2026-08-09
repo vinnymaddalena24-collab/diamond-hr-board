@@ -1589,8 +1589,8 @@ function renderGameDetail(g, players) {
 
   const sortFn = (a,b) => (b.score||0) - (a.score||0);
 
-  const awayPlayers = players.filter(p=>p.team===g.aw).sort(sortFn);
-  const homePlayers = players.filter(p=>p.team===g.hm).sort(sortFn);
+  const awayPlayers = players.filter(p=>p.team===g.aw && (p.score||0)>=40).sort(sortFn);
+  const homePlayers = players.filter(p=>p.team===g.hm && (p.score||0)>=40).sort(sortFn);
 
   const awayPitcher = g.hp; // away batters face home pitcher
   const homePitcher = g.ap; // home batters face away pitcher
