@@ -894,6 +894,11 @@ def fetch_pitcher_game_log(pitcher_id):
         total_ip = sum(float(s["stat"].get("inningsPitched", 0) or 0) for s in recent3)
         recent_era = round((total_er / total_ip) * 9, 2) if total_ip > 0 else 4.50
 
+        # Rolling HR/9 from last 5 starts — more predictive than season HR/9
+        recent_hr  = sum(s["hr"] for s in starts)
+        recent_ip5 = sum(s["ip"] for s in starts)
+        recent_hr9 = round((recent_hr / recent_ip5) * 9, 2) if recent_ip5 >= 5 else None
+
         last_date_str = splits[0].get("date", "")
         days_rest = 5
         if last_date_str:
@@ -905,6 +910,7 @@ def fetch_pitcher_game_log(pitcher_id):
 
         result = {
             "recent_era":   recent_era,
+            "recent_hr9":   recent_hr9,   # rolling HR/9 from last 5 starts
             "days_rest":    days_rest,
             "last_pitches": last_pitches,
             "fatigued":     days_rest <= 3 or last_pitches >= 105,
@@ -1587,6 +1593,15 @@ def pull_adj(bats, home_team):
 def lineup_adj(pos):
     return LINEUP_BONUS.get(pos, 0)
 
+def estimate_game_total(home_era, away_era):
+    """
+    Free fallback when no Odds API key: estimate O/U from both starters' ERA.
+    ERA ≈ runs allowed per 9 IP; two starters together ≈ expected game run total.
+    Scaled by 0.88 to account for typical bullpen efficiency.
+    """
+    if not home_era or not away_era: return 0.0
+    return round((home_era + away_era) * 0.88, 1)
+
 def game_total_adj(total):
     """Run environment from O/U total: high-total games = more HRs expected."""
     if not total: return 0
@@ -1834,6 +1849,13 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
         if m_hr > 0:
             hr_pct = m_hr * 0.25 + hr_pct * 0.75
 
+    # ── Barrel rate shrinkage: regress toward league mean (8%) until ~200 BBE ──
+    # BBE ≈ 28% of PA; barrel% stabilizes around 200 BBE (~714 PA)
+    pa_total = batter_stats.get("PA", 0)
+    bbbe = pa_total * 0.28
+    barrel_reliability = min(bbbe / 200.0, 1.0)
+    barrel = barrel * barrel_reliability + 8.0 * (1 - barrel_reliability)
+
     # ── PROFILE: inherent power (reduced weights so stars don't auto-dominate) ──
     profile = 0
     profile += min(hr_pct * 1.8, 20)
@@ -1896,7 +1918,10 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
     k9  = pitcher_stats.get("k9", 8.5)
-    hr9 = pitcher_stats.get("hr9", 1.10)   # HRs allowed per 9 IP (league avg ~1.1)
+    hr9_season = pitcher_stats.get("hr9", 1.10)
+    # Blend season HR/9 with rolling 5-start HR/9 (55% recent, 45% season) — recent is more predictive
+    hr9_recent = pitcher_log.get("recent_hr9") if pitcher_log else None
+    hr9 = (hr9_recent * 0.55 + hr9_season * 0.45) if hr9_recent is not None else hr9_season
     gb_ratio = pitcher_stats.get("gbPct", 1.0)  # GO/AO ratio; >1.5 = strong GB pitcher
     pv  = 28 + (era_fip - 3.5) * 5.5
     pv += (fb - 38) * 0.45      # real FB% now; higher weight since it's no longer a stub
@@ -1980,7 +2005,10 @@ def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
     vel = pitcher_stats.get("vel", 92.5)
     q   = pitcher_stats.get("quality", "mid")
     ph  = pitcher_stats.get("hand", "R")
-    pv  = 28 + (era_fip - 3.5) * 5.5 + (fb - 38) * 0.45
+    hr9_season = pitcher_stats.get("hr9", 1.10)
+    hr9_recent = pitcher_log.get("recent_hr9") if pitcher_log else None
+    hr9 = (hr9_recent * 0.55 + hr9_season * 0.45) if hr9_recent is not None else hr9_season
+    pv  = 28 + (era_fip - 3.5) * 5.5 + (fb - 38) * 0.45 + (hr9 - 1.10) * 13
     if vel < 91:  pv += 3
     if q == "danger": pv += 16
     if q == "elite":  pv -= 12
@@ -2259,6 +2287,11 @@ def _do_build(date_str):
         ump_score  = ump_zone_adj(g.get("hpUmp", ""), ump_live)
         total_key  = f"{g['away']}_{g['home']}"
         game_total = game_totals.get(total_key, 0.0)
+        # Free fallback: estimate game total from both starters' ERA when Odds API key not set
+        if not game_total:
+            home_era = g.get("homePitcher", {}).get("era", 0)
+            away_era = g.get("awayPitcher", {}).get("era", 0)
+            game_total = estimate_game_total(home_era, away_era)
         for side in ["awayPitcher", "homePitcher"]:
             pid   = g[side].get("id")
             name  = g[side].get("name", "")
