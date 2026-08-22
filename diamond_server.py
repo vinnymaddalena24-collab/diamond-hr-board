@@ -198,7 +198,7 @@ PULL_BONUS = {
 }
 
 # Lineup position bonus — cleanup hitters see better pitches
-LINEUP_BONUS = {1:1,2:2,3:4,4:6,5:3,6:1,7:0,8:-1,9:-2}
+LINEUP_BONUS = {1:3,2:5,3:8,4:10,5:5,6:2,7:0,8:-3,9:-5}
 
 # Umpire zone tendencies: positive = hitter-friendly (tight zone → more FBs in zone)
 # negative = pitcher-friendly (liberal zone → pitchers expand early in count)
@@ -1818,22 +1818,25 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     bats     = batter_stats.get("bats", "R")
     ph       = pitcher_stats.get("hand", "R")
 
-    # ── 1. Blend recent 15-day form (60/40 with season) ───────────────────────
+    # ── 1. Blend recent 15-day form (70/30 with season) ──────────────────────
+    # Recent form is the strongest short-term signal for props
     recency_bonus = 0
-    season_hr_pct = hr_pct  # keep season baseline for recency comparison
+    season_hr_pct = hr_pct
     if recent_stats and recent_stats.get("G_recent", 0) >= 5:
         r_hr  = recent_stats["hrPct_recent"]
-        hr_pct = r_hr * 0.60 + hr_pct * 0.40
-        ops    = recent_stats["OPS_recent"] * 0.55 + ops * 0.45
-        slg    = recent_stats["SLG_recent"] * 0.55 + slg * 0.45
-        # Explicit hot/cold bonus on top of the blend
+        hr_pct = r_hr * 0.70 + hr_pct * 0.30   # was 60/40 — recent is more predictive
+        ops    = recent_stats["OPS_recent"] * 0.65 + ops * 0.35
+        slg    = recent_stats["SLG_recent"] * 0.65 + slg * 0.35
+        # Hot/cold streak bonus — larger signal than before
         if season_hr_pct > 0:
             ratio = r_hr / season_hr_pct
-            if   ratio >= 2.0: recency_bonus =  7
-            elif ratio >= 1.5: recency_bonus =  5
+            if   ratio >= 2.5: recency_bonus = 12
+            elif ratio >= 2.0: recency_bonus =  9
+            elif ratio >= 1.5: recency_bonus =  6
             elif ratio >= 1.25: recency_bonus = 3
-            elif ratio <= 0.4:  recency_bonus = -5
-            elif ratio <= 0.6:  recency_bonus = -3
+            elif ratio <= 0.3:  recency_bonus = -8
+            elif ratio <= 0.5:  recency_bonus = -5
+            elif ratio <= 0.7:  recency_bonus = -3
 
     # ── 2. Blend home/away split (35% weight, 15+ game minimum) ──────────────
     if home_away_splits:
@@ -1856,134 +1859,141 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     barrel_reliability = min(bbbe / 200.0, 1.0)
     barrel = barrel * barrel_reliability + 8.0 * (1 - barrel_reliability)
 
-    # ── PROFILE: inherent power (reduced weights so stars don't auto-dominate) ──
+    # ── PROFILE: inherent power — barrel & HR rate are the dominant signals ──────
+    # Rule: the two strongest predictors get the most weight; everything else is trim
     profile = 0
-    profile += min(hr_pct * 1.8, 20)
-    profile += min((ops - 0.600) * 28, 14)
-    profile += min((slg - 0.350) * 22, 10)
-    profile += min((barrel - 8) * 1.5, 14)     # barrel is the best HR predictor
-    profile += min((xwoba - 0.320) * 22, 8)    # xwOBA: quality of contact holistically
-    xslg = savant_stats.get("xslg", 0)
-    if xslg > 0.380:                            # xSLG: expected slugging, better than actual for regression
-        profile += min((xslg - 0.380) * 14, 5)
-    profile += min((hard_hit - 40) * 0.20, 5)
-    profile += min((iso - 0.180) * 18, 4)
-    profile += min((sweet - 36) * 0.15, 2)
-    # HR/FB%: what % of fly balls become HRs — elite >20%, league avg ~13%
+
+    # Anchor 1: HR rate (blended with recency above) — the most direct measure
+    profile += min(hr_pct * 2.2, 24)
+
+    # Anchor 2: Barrel% — best Statcast predictor of HR; no artificial cap at 14
+    # A 20% barrel guy (elite) should score ~18 pts above a 8% average guy
+    profile += min((barrel - 8) * 1.8, 22)
+
+    # Anchor 3: HR/FB% — direct: what % of fly balls leave the park
     if hr_fb_pct > 13:
-        profile += min((hr_fb_pct - 13) * 0.5, 8)
-    # xHR gap: if player has significantly more xHR than actual HR, they're "due"
-    # Scale xHR to per-game rate vs actual, only apply when sample is meaningful
-    if xhr > 0 and actual_hr > 0 and pa_per_g > 0:
-        xhr_gap = xhr - actual_hr   # positive = underperforming expected HRs
-        if xhr_gap > 3:
-            profile += min(xhr_gap * 0.8, 6)   # due for upward regression
-        elif xhr_gap < -3:
-            profile -= min(abs(xhr_gap) * 0.5, 4)  # running hot, likely to cool
-    # Fly ball rate: more fly balls = more HR chances (league avg ~35%)
-    if fb_pct > 30:
-        profile += min((fb_pct - 30) * 0.30, 6)
-    # Power synergy: high-FB batter facing high-FB pitcher = multiplicative HR edge
-    if pitcher_sav:
-        p_fb = pitcher_sav.get("fb_pct", 0) or 38
-        if fb_pct > 38 and p_fb > 42:
-            fb_synergy = ((fb_pct - 38) * (p_fb - 42)) / 220
-            profile += min(fb_synergy, 4)
-    # Whiff rate: high swing-and-miss = strikeout risk = ball never in play (league avg ~24%)
-    if whiff_pct > 24:
-        profile -= min((whiff_pct - 24) * 0.25, 6)
-    if pa_per_g >= 4.5: profile += 3
+        profile += min((hr_fb_pct - 13) * 0.8, 10)
+
+    # Secondary: xwOBA and SLG — quality of contact, power quality
+    profile += min((xwoba - 0.320) * 20, 8) if xwoba > 0.320 else 0
+    profile += min((slg - 0.350) * 18, 8)
+
+    # xSLG: expected slugging (regresses toward contact quality, not luck)
+    xslg = savant_stats.get("xslg", 0)
+    if xslg > 0.400:
+        profile += min((xslg - 0.400) * 18, 5)
+
+    # Fly ball rate: more chances for balls to carry (league avg ~35%)
+    if fb_pct > 35:
+        profile += min((fb_pct - 35) * 0.35, 5)
+
+    # OPS — broad offensive production signal
+    profile += min((ops - 0.650) * 20, 8) if ops > 0.650 else 0
+
+    # ISO — isolated power, strips out singles noise
+    profile += min((iso - 0.180) * 16, 4) if iso > 0.180 else 0
+
+    # Hard hit% — supplementary, low weight (captured mostly by barrel/xwOBA)
+    profile += min((hard_hit - 42) * 0.15, 3) if hard_hit > 42 else 0
+
+    # Whiff rate penalizes contact: fewer balls in play (league avg ~24%)
+    if whiff_pct > 26:
+        profile -= min((whiff_pct - 26) * 0.30, 7)
+
+    # Plate appearances per game: more PA = more HR chances
+    if pa_per_g >= 4.5: profile += 4
     elif pa_per_g >= 4.2: profile += 2
-    elif pa_per_g < 3.0: profile -= 2
+    elif pa_per_g < 3.0: profile -= 3
+
+    # Pull tendency at favorable parks
     if pull_pct > 35:
         profile += calc_spray_park_adj(bats, home_team, pull_pct)
-    # Due-factor: player's personal bounce-back pattern after a 0-fer
-    # Only apply when sample is meaningful (>=40% of their HRs come after an 0-fer)
-    if batter_log:
-        pct_after_ohfor = batter_log.get("pctAfterOhFor", 0)
-        prev_ohfor = batter_log.get("prevOhFor", False)
-        if prev_ohfor and pct_after_ohfor >= 40:
-            profile += min((pct_after_ohfor - 35) / 14.0, 2.5)  # up to +2.5 for strong bounce-back pattern
+
+    # Power synergy: high-FB batter vs high-FB pitcher
+    if pitcher_sav:
+        p_fb = pitcher_sav.get("fb_pct", 0) or 38
+        if fb_pct > 40 and p_fb > 42:
+            profile += min(((fb_pct - 40) * (p_fb - 42)) / 180, 4)
+
+    # NOTE: xHR "due factor" removed — gambler's fallacy; xHR doesn't predict tonight
 
     # ── SITUATION: today's opportunity (increased weights — this is where VALUE hides)
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
-        era = pitcher_log["recent_era"] * 0.60 + era * 0.40
-    # Blend FIP (45%) with ERA (55%) — FIP strips luck & is more HR-predictive
+        # Weight recent ERA more heavily — it's more predictive for tonight
+        era = pitcher_log["recent_era"] * 0.65 + era * 0.35
+    # FIP (50%) + ERA (50%) blend — FIP strips luck, more HR-predictive
     fip = pitcher_stats.get("fip", era)
-    era_fip = era * 0.55 + min(fip, 7.0) * 0.45
-    # Use real pitcher FB% from Savant if available, else fall back to hardcoded default
+    era_fip = era * 0.50 + min(fip, 7.0) * 0.50
+
     fb  = pitcher_sav.get("fb_pct", 0) if pitcher_sav else 0
     fb  = fb if fb > 0 else pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
-    q   = pitcher_stats.get("quality", "mid")
     k9  = pitcher_stats.get("k9", 8.5)
     hr9_season = pitcher_stats.get("hr9", 1.10)
-    # Blend season HR/9 with rolling 5-start HR/9 (55% recent, 45% season) — recent is more predictive
     hr9_recent = pitcher_log.get("recent_hr9") if pitcher_log else None
-    hr9 = (hr9_recent * 0.55 + hr9_season * 0.45) if hr9_recent is not None else hr9_season
-    gb_ratio = pitcher_stats.get("gbPct", 1.0)  # GO/AO ratio; >1.5 = strong GB pitcher
-    pv  = 28 + (era_fip - 3.5) * 5.5
-    pv += (fb - 38) * 0.45      # real FB% now; higher weight since it's no longer a stub
-    # HR/9: most direct measure of HR vulnerability (each +0.3 above avg ≈ +4 pts)
-    pv += (hr9 - 1.10) * 13
-    # Ground ball pitchers suppress HRs below what ERA suggests (GO/AO > 1.5)
+    hr9 = (hr9_recent * 0.60 + hr9_season * 0.40) if hr9_recent is not None else hr9_season
+    gb_ratio = pitcher_stats.get("gbPct", 1.0)
+
+    # ── Pitcher vulnerability score (pv) ────────────────────────────────────
+    # REMOVED quality flag double-counting: "danger"/"elite" was already
+    # captured by era_fip, hr9, and barrel_allowed — don't add it again.
+    # pv is centered at 0; positive = hitter-friendly, negative = pitcher-friendly
+    pv  = (era_fip - 4.20) * 6.5          # ERA/FIP: centered at league avg ~4.20
+    pv += (hr9 - 1.10) * 15               # HR/9: most direct HR-allowed signal
+    pv += (fb - 38) * 0.50                # FB% above avg = more balls to carry
     if gb_ratio > 1.5:
-        pv -= min((gb_ratio - 1.5) * 4, 8)
-    if vel < 91: pv += 3
-    if q == "danger": pv += 16
-    if q == "elite":  pv -= 12
-    if pitcher_log and pitcher_log.get("fatigued"):          pv += 7
-    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
+        pv -= min((gb_ratio - 1.5) * 5, 10)   # GB pitchers suppress HRs
+    if vel < 90: pv += 4
+    elif vel < 92: pv += 2
+    if pitcher_log and pitcher_log.get("fatigued"):           pv += 8
+    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3:  pv += 5
     if pitcher_sav:
-        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
-        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
-        # Pitcher HR/FB%: what % of their fly balls become HRs (league avg ~10%)
+        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.5
+        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.12
         p_hr_fb = pitcher_sav.get("hr_fb_pct", 0)
         if p_hr_fb > 10:
-            pv += min((p_hr_fb - 10) * 0.30, 5)   # each pct above avg, cap +5
+            pv += min((p_hr_fb - 10) * 0.35, 6)
 
-    # Handedness-adjusted park factor (LHB → RF distance matters, RHB → LF)
+    # Handedness-adjusted park factor (LHB → RF distance, RHB → LF)
     effective_pf = PARK_FACTORS_HAND.get(home_team, {}).get(
         "L" if bats in ("L", "S") else "R", pf)
 
+    # ── SITUATION: today's opportunity — raised weights throughout ────────────
     situ = 0
-    situ += max(0, min(100, pv)) * 0.25        # pitcher vuln: was 0.17, now 0.25
-    situ += ((effective_pf - 100) / 50) * 12   # park: handedness-adjusted
-    situ += wind_adj(wx) * 0.70                # wind: was 0.48, now 0.70
+    situ += max(-20, min(30, pv)) * 0.35   # pitcher vuln: raised from 0.25, now ±10.5 pts
+    situ += ((effective_pf - 100) / 50) * 14   # park: was 12, now 14
+    situ += wind_adj(wx) * 0.80            # wind: raised from 0.70
     situ += temp_adj(wx.get("temp", 72))
     situ += baro_adj(wx.get("pressure", 1013))
-    situ += humid_adj(wx.get("humidity", 55))
     situ += platoon_adj(bats, ph, batter_platoon)
-    situ += lineup_adj(lineup_pos)
+    situ += lineup_adj(lineup_pos)         # now uses stronger LINEUP_BONUS table
     situ += ump_score * 2.5
     situ += game_total_adj(game_total)
-    # High-K pitcher reduces HR opportunities; fewer balls in play
-    if k9 > 9.0:
-        situ -= min((k9 - 9.0) * 1.2, 5)
-    if bullpen_era >= 5.20:   situ += 4
-    elif bullpen_era >= 4.80: situ += 2
+    # High-K pitcher penalty: fewer balls in play
+    if k9 > 9.5:
+        situ -= min((k9 - 9.5) * 1.4, 6)
+    if bullpen_era >= 5.00:   situ += 3
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
     score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus)))
 
     if explain:
-        k9_situ_pen = -round(min((k9 - 9.0) * 1.2, 5), 1) if k9 > 9.0 else 0
+        k9_situ_pen = -round(min((k9 - 9.5) * 1.4, 6), 1) if k9 > 9.5 else 0
         breakdown = {
             "platoon": round(platoon_adj(bats, ph, batter_platoon)),
-            "wind":    round(wind_adj(wx) * 0.70),
-            "park":    round(((effective_pf - 100) / 50) * 12),
+            "wind":    round(wind_adj(wx) * 0.80),
+            "park":    round(((effective_pf - 100) / 50) * 14),
             "h2h":     h2h_adj(h2h),
             "pitch":   pitch_matchup_adj,
             "recency": recency_bonus,
-            "elite_p": -12 if q == "elite" else 0,
-            "vuln_p":  round((era - 3.5) * 5.5 + 16) if q == "danger" else 0,
-            "fatigue": 7 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
-            "barrel":  round(min((barrel - 8) * 1.5, 14)),
-            "xwoba":   round(min((xwoba - 0.320) * 22, 8), 1) if xwoba > 0.320 else 0,
-            "flyball": round(min((fb_pct - 30) * 0.30, 6), 1) if fb_pct > 30 else 0,
-            "whiff":   -round(min((whiff_pct - 24) * 0.25, 6), 1) if whiff_pct > 24 else 0,
+            "vuln_p":  round(max(-20, min(30, pv)) * 0.35),
+            "fatigue": 8 if (pitcher_log and pitcher_log.get("fatigued")) else 0,
+            "barrel":  round(min((barrel - 8) * 1.8, 22)),
+            "xwoba":   round(min((xwoba - 0.320) * 20, 8), 1) if xwoba > 0.320 else 0,
+            "flyball": round(min((fb_pct - 35) * 0.35, 5), 1) if fb_pct > 35 else 0,
+            "whiff":   -round(min((whiff_pct - 26) * 0.30, 7), 1) if whiff_pct > 26 else 0,
             "kpitch":  k9_situ_pen,
         }
         return score, breakdown
@@ -1997,41 +2007,38 @@ def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
     High situ = value spot. A lower-profile player with high situ is a VALUE pick."""
     era = pitcher_stats.get("era", 4.50)
     if pitcher_log and pitcher_log.get("recent_era"):
-        era = pitcher_log["recent_era"] * 0.60 + era * 0.40
+        era = pitcher_log["recent_era"] * 0.65 + era * 0.35
     fip = pitcher_stats.get("fip", era)
-    era_fip = era * 0.55 + min(fip, 7.0) * 0.45
+    era_fip = era * 0.50 + min(fip, 7.0) * 0.50
     fb  = pitcher_sav.get("fb_pct", 0) if pitcher_sav else 0
     fb  = fb if fb > 0 else pitcher_stats.get("fbPct", 38)
     vel = pitcher_stats.get("vel", 92.5)
-    q   = pitcher_stats.get("quality", "mid")
     ph  = pitcher_stats.get("hand", "R")
     hr9_season = pitcher_stats.get("hr9", 1.10)
     hr9_recent = pitcher_log.get("recent_hr9") if pitcher_log else None
-    hr9 = (hr9_recent * 0.55 + hr9_season * 0.45) if hr9_recent is not None else hr9_season
-    pv  = 28 + (era_fip - 3.5) * 5.5 + (fb - 38) * 0.45 + (hr9 - 1.10) * 13
-    if vel < 91:  pv += 3
-    if q == "danger": pv += 16
-    if q == "elite":  pv -= 12
-    if pitcher_log and pitcher_log.get("fatigued"):          pv += 7
-    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3: pv += 5
+    hr9 = (hr9_recent * 0.60 + hr9_season * 0.40) if hr9_recent is not None else hr9_season
+    # Centered at league avg, no quality-flag double-counting
+    pv  = (era_fip - 4.20) * 6.5 + (fb - 38) * 0.50 + (hr9 - 1.10) * 15
+    if vel < 90: pv += 4
+    elif vel < 92: pv += 2
+    if pitcher_log and pitcher_log.get("fatigued"):           pv += 8
+    if pitcher_log and pitcher_log.get("days_rest", 5) <= 3:  pv += 5
     if pitcher_sav:
-        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.4
-        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.10
+        pv += (pitcher_sav.get("barrel_allowed", 8) - 8) * 0.5
+        pv += (pitcher_sav.get("hard_hit_allowed", 38) - 38) * 0.12
         p_hr_fb = pitcher_sav.get("hr_fb_pct", 0)
         if p_hr_fb > 10:
-            pv += min((p_hr_fb - 10) * 0.30, 5)
-    s = max(0, min(100, pv)) * 0.25
-    s += ((pf - 100) / 50) * 12
-    s += wind_adj(wx) * 0.70
+            pv += min((p_hr_fb - 10) * 0.35, 6)
+    s = max(-20, min(30, pv)) * 0.35
+    s += ((pf - 100) / 50) * 14
+    s += wind_adj(wx) * 0.80
     s += temp_adj(wx.get("temp", 72))
     s += baro_adj(wx.get("pressure", 1013))
-    s += humid_adj(wx.get("humidity", 55))
     s += platoon_adj(bats, ph)
     s += lineup_adj(lineup_pos)
     s += ump_score * 2.5
     s += game_total_adj(game_total)
-    if bullpen_era >= 5.20:   s += 4
-    elif bullpen_era >= 4.80: s += 2
+    if bullpen_era >= 5.00:   s += 3
     elif bullpen_era >= 4.50: s += 1
     elif bullpen_era < 3.50:  s -= 2
     return round(max(0, min(60, s)), 1)
