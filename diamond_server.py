@@ -1488,6 +1488,101 @@ def fetch_batter_pitch_stats():
         return {}
 
 
+def _attach_odds(player_name, our_prob, odds_map):
+    """Match player to sportsbook HR prop line and compute edge.
+    Returns dict with bookOdds, bookImplied, edge fields (or nulls if no line found)."""
+    if not odds_map:
+        return {"bookOdds": None, "bookImplied": None, "edge": None}
+    # Try exact match first, then last-name match
+    key = player_name.strip().lower()
+    line = odds_map.get(key)
+    if not line:
+        last = key.split()[-1] if key else ""
+        matches = [v for k, v in odds_map.items() if k.endswith(last) and len(last) > 3]
+        line = matches[0] if len(matches) == 1 else None
+    if not line:
+        return {"bookOdds": None, "bookImplied": None, "edge": None}
+    implied = line["impliedProb"]
+    edge = round(our_prob - implied, 1)
+    return {
+        "bookOdds":    line["odds"],
+        "bookImplied": implied,
+        "edge":        edge,
+        "edgeBook":    line.get("book", ""),
+    }
+
+
+def implied_prob(american_odds):
+    """Convert American odds (+150, -200) to implied probability (0–100)."""
+    try:
+        o = float(american_odds)
+        if o > 0:
+            return round(100 / (o + 100) * 100, 1)
+        else:
+            return round(abs(o) / (abs(o) + 100) * 100, 1)
+    except Exception:
+        return 0.0
+
+
+def fetch_hr_prop_odds():
+    """Fetch today's HR prop lines from The Odds API.
+    Returns {player_name_lower: {"odds": int, "impliedProb": float, "book": str}}
+    Requires ODDS_API_KEY. Uses player_props market: batter_home_runs."""
+    if not ODDS_API_KEY:
+        return {}
+    cached = cache_get("hr_prop_odds", ttl=1800)  # cache 30 min
+    if cached is not None:
+        return cached
+    url = (
+        f"https://api.the-odds-api.com/v4/sports/baseball_mlb/events"
+        f"?apiKey={ODDS_API_KEY}&dateFormat=iso"
+    )
+    try:
+        events = fetch(url)
+        result = {}
+        # Fetch props for each event
+        for event in events[:20]:  # limit to avoid burning quota
+            eid = event.get("id")
+            if not eid:
+                continue
+            props_url = (
+                f"https://api.the-odds-api.com/v4/sports/baseball_mlb/events/{eid}/odds"
+                f"?apiKey={ODDS_API_KEY}&regions=us&markets=batter_home_runs&oddsFormat=american"
+            )
+            try:
+                props = fetch(props_url)
+            except Exception:
+                continue
+            for bm in props.get("bookmakers", [])[:3]:
+                book = bm.get("key", "")
+                for market in bm.get("markets", []):
+                    if market.get("key") != "batter_home_runs":
+                        continue
+                    for outcome in market.get("outcomes", []):
+                        name = outcome.get("description", "") or outcome.get("name", "")
+                        price = outcome.get("price")
+                        if not name or price is None:
+                            continue
+                        # Only "Yes" outcomes (score a HR)
+                        if outcome.get("name", "").lower() not in ("yes", "over"):
+                            continue
+                        key = name.strip().lower()
+                        ip = implied_prob(price)
+                        # Keep the best (lowest implied prob = best odds for bettor)
+                        if key not in result or ip < result[key]["impliedProb"]:
+                            result[key] = {
+                                "odds":        int(price),
+                                "impliedProb": ip,
+                                "book":        book,
+                            }
+        cache_set("hr_prop_odds", result)
+        print(f"[hr_odds] {len(result)} player HR prop lines fetched")
+        return result
+    except Exception as e:
+        print(f"[hr_odds] Error: {e}")
+        return {}
+
+
 def fetch_game_totals(date_str):
     """O/U game totals from The Odds API — run environment signal.
     Requires ODDS_API_KEY env var (free at the-odds-api.com, 500 req/mo)."""
@@ -2223,6 +2318,7 @@ def _do_build(date_str):
     f_bullpen  = _ex.submit(fetch_team_bullpen_era)
     f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
     f_totals   = _ex.submit(fetch_game_totals, date_str)
+    f_hr_odds  = _ex.submit(fetch_hr_prop_odds)
     f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
     f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
     f_wx       = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
@@ -2252,6 +2348,7 @@ def _do_build(date_str):
     bullpen         = safe(f_bullpen)
     ump_live        = safe(f_ump_live)
     game_totals     = safe(f_totals)
+    hr_prop_odds    = safe(f_hr_odds) or {}
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
     pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
     weather_map     = {gid: safe(f) for gid, f in f_wx.items()}
@@ -2495,6 +2592,8 @@ def _do_build(date_str):
                 "simExp":           sim["simExp"],
                 "simDist":          sim["simDist"],
                 "pHRperPA":         sim["pHRperPA"],
+                # ── Sportsbook edge ───────────────────────────────────────────
+                **_attach_odds(name, sim["simProb"], hr_prop_odds),
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
                 "pitchMatchup":     pitch_matchup if pitch_matchup else [],
                 "sprayAdj":         spray,
@@ -2533,12 +2632,22 @@ def _do_build(date_str):
         g["isStack"]    = len(stack_players) >= 2
         g["stackCount"] = len(stack_players)
 
-    # Top 5 across all games — mark top 3 as best bets
+    # Top plays across all games — sort by edge when odds available, else score
     all_players = []
     for g in games:
         all_players.extend(g.get("players", []))
-    all_players.sort(key=lambda x: x["score"], reverse=True)
-    top5 = all_players[:5]
+    has_odds = any(p.get("edge") is not None for p in all_players)
+    if has_odds:
+        # Primary: positive edge descending; only show plays with edge > 0
+        edge_plays = [p for p in all_players if (p.get("edge") or 0) > 0]
+        edge_plays.sort(key=lambda x: (x.get("edge") or 0), reverse=True)
+        # Fallback: high-score plays without a line, in case we have < 5 edge plays
+        no_odds = [p for p in all_players if p.get("edge") is None]
+        no_odds.sort(key=lambda x: x["score"], reverse=True)
+        top5 = (edge_plays + no_odds)[:8]
+    else:
+        all_players.sort(key=lambda x: x["score"], reverse=True)
+        top5 = all_players[:8]
     for i, p in enumerate(top5):
         p["rank"] = i + 1
         p["bestBet"] = i < 3

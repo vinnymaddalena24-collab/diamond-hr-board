@@ -124,6 +124,12 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .htC .hero-tier-badge{background:rgba(34,211,238,.15);color:#22D3EE;border:1px solid rgba(34,211,238,.35)}
 .hero-prob{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--muted);margin-top:4px}
 .hero-prob.hpg{color:#00FF7F}.hero-prob.hpa{color:#FFD700}
+/* Edge badge — the number that matters */
+.hero-edge{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;padding:3px 8px;border-radius:2px;display:inline-block;margin-top:5px;letter-spacing:.5px}
+.hero-edge.pos{background:rgba(0,255,127,.15);color:#00FF7F;border:1px solid rgba(0,255,127,.4)}
+.hero-edge.neg{background:rgba(255,68,68,.1);color:#FF4444;border:1px solid rgba(255,68,68,.3)}
+.hero-edge.neu{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
+.hero-book-implied{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted);margin-top:2px;letter-spacing:.5px}
 
 /* ── FILTER BAR ── */
 .filter-bar{display:flex;align-items:center;gap:4px;padding:7px 20px;border-bottom:1px solid var(--border);background:#000;position:sticky;top:52px;z-index:100;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
@@ -1405,13 +1411,18 @@ function renderBestBets() {
           <div class="hero-photo">${photo}</div>
           <div class="hero-mid">
             <div class="hero-name">${p.name} ${trend} <span class="p-team">${p.team}</span>${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}</div>
-            <div class="hero-opp">vs ${oppLast}${p.hrPct?` · ${p.hrPct.toFixed(1)}% HR rate`:''}</div>
+            <div class="hero-opp">vs ${oppLast}${p.bookOdds != null ? ` · ${p.bookOdds > 0 ? '+' : ''}${p.bookOdds}` : p.hrPct ? ` · ${p.hrPct.toFixed(1)}% HR rate` : ''}</div>
             <div class="hero-reason">${reasonStr}</div>
           </div>
           <div class="hero-right">
-            <div class="hero-score">${p.score}</div>
-            <div class="hero-tier-badge">${t}</div>
-            ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}">${p.hrProb}%</div>` : ''}
+            ${p.edge != null
+              ? `<div class="hero-edge ${p.edge > 0 ? 'pos' : p.edge < 0 ? 'neg' : 'neu'}">${p.edge > 0 ? '+' : ''}${p.edge}%</div>
+                 <div class="hero-book-implied">EDGE vs BOOK</div>
+                 <div class="hero-prob ${probCls}" style="margin-top:4px">${p.hrProb}% / ${p.bookImplied}%</div>`
+              : `<div class="hero-score">${p.score}</div>
+                 <div class="hero-tier-badge">${t}</div>
+                 ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}">${p.hrProb}%</div>` : ''}`
+            }
           </div>
         </div>`;
       }).join('')}
