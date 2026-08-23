@@ -2318,7 +2318,6 @@ def _do_build(date_str):
     f_bullpen  = _ex.submit(fetch_team_bullpen_era)
     f_ump_live = _ex.submit(fetch_ump_zone_live, date_str)
     f_totals   = _ex.submit(fetch_game_totals, date_str)
-    f_hr_odds  = _ex.submit(fetch_hr_prop_odds)
     f_p_stats  = {pid: _ex.submit(fetch_pitcher_stats,    pid) for pid in pitcher_ids}
     f_p_logs   = {pid: _ex.submit(fetch_pitcher_game_log, pid) for pid in pitcher_ids}
     f_wx       = {gid: _ex.submit(fetch_weather, home, hour) for gid,(home,hour) in game_wx_keys.items()}
@@ -2348,7 +2347,6 @@ def _do_build(date_str):
     bullpen         = safe(f_bullpen)
     ump_live        = safe(f_ump_live)
     game_totals     = safe(f_totals)
-    hr_prop_odds    = safe(f_hr_odds) or {}
     pitcher_stats   = {pid: safe(f) for pid, f in f_p_stats.items()}
     pitcher_logs    = {pid: safe(f) for pid, f in f_p_logs.items()}
     weather_map     = {gid: safe(f) for gid, f in f_wx.items()}
@@ -2592,8 +2590,6 @@ def _do_build(date_str):
                 "simExp":           sim["simExp"],
                 "simDist":          sim["simDist"],
                 "pHRperPA":         sim["pHRperPA"],
-                # ── Sportsbook edge ───────────────────────────────────────────
-                **_attach_odds(name, sim["simProb"], hr_prop_odds),
                 "h2h":              h2h if h2h.get("ab", 0) >= 3 else None,
                 "pitchMatchup":     pitch_matchup if pitch_matchup else [],
                 "sprayAdj":         spray,
@@ -2636,18 +2632,8 @@ def _do_build(date_str):
     all_players = []
     for g in games:
         all_players.extend(g.get("players", []))
-    has_odds = any(p.get("edge") is not None for p in all_players)
-    if has_odds:
-        # Primary: positive edge descending; only show plays with edge > 0
-        edge_plays = [p for p in all_players if (p.get("edge") or 0) > 0]
-        edge_plays.sort(key=lambda x: (x.get("edge") or 0), reverse=True)
-        # Fallback: high-score plays without a line, in case we have < 5 edge plays
-        no_odds = [p for p in all_players if p.get("edge") is None]
-        no_odds.sort(key=lambda x: x["score"], reverse=True)
-        top5 = (edge_plays + no_odds)[:8]
-    else:
-        all_players.sort(key=lambda x: x["score"], reverse=True)
-        top5 = all_players[:8]
+    all_players.sort(key=lambda x: x["score"], reverse=True)
+    top5 = all_players[:8]
     for i, p in enumerate(top5):
         p["rank"] = i + 1
         p["bestBet"] = i < 3

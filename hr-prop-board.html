@@ -1411,18 +1411,13 @@ function renderBestBets() {
           <div class="hero-photo">${photo}</div>
           <div class="hero-mid">
             <div class="hero-name">${p.name} ${trend} <span class="p-team">${p.team}</span>${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}</div>
-            <div class="hero-opp">vs ${oppLast}${p.bookOdds != null ? ` · ${p.bookOdds > 0 ? '+' : ''}${p.bookOdds}` : p.hrPct ? ` · ${p.hrPct.toFixed(1)}% HR rate` : ''}</div>
+            <div class="hero-opp">vs ${oppLast}${p.hrPct?` · ${p.hrPct.toFixed(1)}% HR rate`:''}</div>
             <div class="hero-reason">${reasonStr}</div>
           </div>
           <div class="hero-right">
-            ${p.edge != null
-              ? `<div class="hero-edge ${p.edge > 0 ? 'pos' : p.edge < 0 ? 'neg' : 'neu'}">${p.edge > 0 ? '+' : ''}${p.edge}%</div>
-                 <div class="hero-book-implied">EDGE vs BOOK</div>
-                 <div class="hero-prob ${probCls}" style="margin-top:4px">${p.hrProb}% / ${p.bookImplied}%</div>`
-              : `<div class="hero-score">${p.score}</div>
-                 <div class="hero-tier-badge">${t}</div>
-                 ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}">${p.hrProb}%</div>` : ''}`
-            }
+            <div class="hero-score">${p.score}</div>
+            <div class="hero-tier-badge">${t}</div>
+            ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}">${p.hrProb}%</div>` : ''}
           </div>
         </div>`;
       }).join('')}
