@@ -1436,13 +1436,15 @@ function renderBestBets() {
   let topPlays = [...serverTop5];
   if (!topPlays.length && activeGames.length) {
     topPlays = activeGames.flatMap(g => buildPlayers(g))
-      .filter(p => (p.score||0) >= 60)
+      .filter(p => (p.score||0) >= 68)  // A-tier minimum
       .sort((a,b) => (b.score||0) - (a.score||0))
-      .slice(0, 8);
+      .slice(0, 5);
   }
+  // Filter server top5 to only show genuine value (A-tier+)
+  topPlays = topPlays.filter(p => (p.score||0) >= 65);
   if (!topPlays.length) { banner.style.display = 'none'; return; }
 
-  const plays = topPlays.slice(0, 8);
+  const plays = topPlays.slice(0, 5);  // max 5 picks — fewer, better
 
   banner.innerHTML = `
     <div class="hero-hd">

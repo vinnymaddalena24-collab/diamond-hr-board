@@ -1922,16 +1922,21 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
         hr_pct = r_hr * 0.70 + hr_pct * 0.30   # was 60/40 — recent is more predictive
         ops    = recent_stats["OPS_recent"] * 0.65 + ops * 0.35
         slg    = recent_stats["SLG_recent"] * 0.65 + slg * 0.35
-        # Hot/cold streak bonus — larger signal than before
+        # Hot/cold streak — most predictive short-term signal
+        # CRITICAL: cold streak kills otherwise good picks
         if season_hr_pct > 0:
             ratio = r_hr / season_hr_pct
-            if   ratio >= 2.5: recency_bonus = 12
-            elif ratio >= 2.0: recency_bonus =  9
-            elif ratio >= 1.5: recency_bonus =  6
-            elif ratio >= 1.25: recency_bonus = 3
-            elif ratio <= 0.3:  recency_bonus = -8
-            elif ratio <= 0.5:  recency_bonus = -5
-            elif ratio <= 0.7:  recency_bonus = -3
+            if   ratio >= 2.5: recency_bonus = 14
+            elif ratio >= 2.0: recency_bonus = 10
+            elif ratio >= 1.5: recency_bonus =  7
+            elif ratio >= 1.25: recency_bonus = 4
+            elif ratio <= 0.15: recency_bonus = -22  # effectively zero HRs recently
+            elif ratio <= 0.3:  recency_bonus = -15
+            elif ratio <= 0.5:  recency_bonus = -8
+            elif ratio <= 0.7:  recency_bonus = -4
+        elif recent_stats.get("G_recent", 0) >= 10:
+            # Has 10+ recent games with zero HR rate — hard cold streak penalty
+            recency_bonus = -20
 
     # ── 2. Blend home/away split (35% weight, 15+ game minimum) ──────────────
     if home_away_splits:
@@ -2072,7 +2077,14 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus)))
+    # ── Pitcher quality gate: suppress picks against HR-suppressing pitchers ──
+    # If blended HR/9 < 0.85 (well below league avg), apply hard cap on situ
+    # so great batters don't get inflated scores against elite starters
+    pitcher_hr9_gate = 0
+    if hr9 < 0.70:   pitcher_hr9_gate = -12  # elite HR suppressor
+    elif hr9 < 0.85: pitcher_hr9_gate = -7   # above-average HR suppressor
+
+    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus + pitcher_hr9_gate)))
 
     if explain:
         k9_situ_pen = -round(min((k9 - 9.5) * 1.4, 6), 1) if k9 > 9.5 else 0
@@ -2139,10 +2151,10 @@ def calc_situ_score(pitcher_stats, pf, wx, pitcher_log=None, pitcher_sav=None,
     return round(max(0, min(60, s)), 1)
 
 def get_tier(score):
-    if score >= 80: return "S"
-    if score >= 65: return "A"
-    if score >= 50: return "B"
-    if score >= 35: return "C"
+    if score >= 82: return "S"
+    if score >= 68: return "A"
+    if score >= 52: return "B"
+    if score >= 36: return "C"
     return "D"
 
 # ── MAIN DATA ASSEMBLY ────────────────────────────────────────────────────────
@@ -2725,15 +2737,21 @@ def _do_build(date_str):
         g["isStack"]    = len(stack_players) >= 2
         g["stackCount"] = len(stack_players)
 
-    # Top plays across all games — sort by edge when odds available, else score
+    # Top plays across all games — only true quality picks make best bets
     all_players = []
     for g in games:
         all_players.extend(g.get("players", []))
     all_players.sort(key=lambda x: x["score"], reverse=True)
-    top5 = all_players[:8]
+
+    # Require A-tier (score ≥ 68) to appear in best bets — fewer but better picks
+    TOP_SCORE_MIN = 68
+    top5 = [p for p in all_players if p["score"] >= TOP_SCORE_MIN][:5]
+    # Fall back to top-3 if nothing clears the bar
+    if not top5:
+        top5 = all_players[:3]
     for i, p in enumerate(top5):
         p["rank"] = i + 1
-        p["bestBet"] = i < 3
+        p["bestBet"] = True
 
     result = {
         "date":      date_str,
