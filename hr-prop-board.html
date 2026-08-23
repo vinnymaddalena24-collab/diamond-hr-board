@@ -456,6 +456,34 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
 /* ── TARGETS / INJURY ── */
 .targets-panel{padding:20px;display:none}
+
+/* ── RECORD PANEL ── */
+.record-panel{padding:20px;display:none;max-width:760px}
+.record-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px}
+@media(max-width:500px){.record-summary{grid-template-columns:repeat(2,1fr)}}
+.rec-stat{background:var(--card);border:1px solid var(--border);padding:14px 16px;text-align:center}
+.rec-stat-val{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;line-height:1}
+.rec-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);letter-spacing:2px;margin-top:4px;text-transform:uppercase}
+.rec-tier-row{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.rec-tier{flex:1;min-width:80px;background:var(--card);border:1px solid var(--border);padding:10px 12px;text-align:center}
+.rec-tier-name{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;margin-bottom:4px}
+.rec-tier-pct{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;line-height:1}
+.rec-tier-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-top:3px}
+.rec-day{margin-bottom:12px;border:1px solid var(--border);background:var(--card)}
+.rec-day-hd{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.rec-day-date{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:1px}
+.rec-day-score{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;margin-left:auto}
+.rec-day-bar{height:3px;background:var(--border);flex:1;border-radius:0;overflow:hidden}
+.rec-day-fill{height:100%;background:var(--green)}
+.rec-picks{display:none;padding:6px 8px 8px}
+.rec-pick{display:flex;align-items:center;gap:8px;padding:5px 6px;border-bottom:1px solid var(--border)}
+.rec-pick:last-child{border-bottom:none}
+.rec-pick-name{font-size:12px;font-weight:700;flex:1}
+.rec-pick-team{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+.rec-pick-tier{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;padding:1px 5px;border-radius:2px}
+.rec-pick-result{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 8px;border-radius:2px;flex-shrink:0}
+.rec-pick-result.hit{background:rgba(0,255,127,.12);color:#00FF7F;border:1px solid rgba(0,255,127,.3)}
+.rec-pick-result.miss{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
 .inj-bar{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:9px 13px;margin-bottom:16px}
 .inj-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--red);margin-bottom:6px}
 .inj-chips{display:flex;flex-wrap:wrap;gap:4px}
@@ -633,6 +661,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   <button class="ftab" data-tab="good">✅ A+ PICKS</button>
   <button class="ftab" data-tab="hot">🔥 HOT</button>
   <button class="ftab" data-tab="pitchers">⚾ PITCHERS</button>
+  <button class="ftab" data-tab="record">📊 RECORD</button>
   <input class="fb-search" id="quickSearch" type="text" placeholder="Quick search..." oninput="searchQ=this.value.trim();render()">
 </div>
 
@@ -645,6 +674,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
     <!-- PITCHERS PANEL -->
     <div id="pitchersPanel" style="display:none"></div>
+    <div id="recordPanel" class="record-panel"></div>
 
     <!-- BOARD -->
     <div id="board"></div>
@@ -1771,9 +1801,12 @@ function render() {
   renderPicks();
 
   const isPitchers = activeTab === 'pitchers';
+  const isRecord   = activeTab === 'record';
   document.getElementById('pitchersPanel').style.display = isPitchers ? '' : 'none';
+  document.getElementById('recordPanel').style.display   = isRecord   ? '' : 'none';
 
   if(isPitchers) { renderPitchersTab(); document.getElementById('board').innerHTML=''; return; }
+  if(isRecord)   { renderRecordTab();   document.getElementById('board').innerHTML=''; return; }
 
   if(!activeGames.length) {
     document.getElementById('board').innerHTML='<div class="no-games-msg">NO GAMES SCHEDULED FOR THIS DATE</div>';
@@ -1781,6 +1814,78 @@ function render() {
   }
 
   renderBoardWithStrip();
+}
+
+// ── RECORD TAB ────────────────────────────────────────────────────────────────
+let _recordData = null, _recordLoading = false;
+async function renderRecordTab() {
+  const el = document.getElementById('recordPanel');
+  if(_recordLoading) return;
+  if(_recordData) { _buildRecordUI(el, _recordData); return; }
+  el.innerHTML = '<div class="empty-msg">LOADING RECORD…</div>';
+  _recordLoading = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/record`, {cache:'no-store'});
+    _recordData = await res.json();
+    _buildRecordUI(el, _recordData);
+  } catch(e) {
+    el.innerHTML = '<div class="empty-msg">COULD NOT LOAD RECORD</div>';
+  } finally {
+    _recordLoading = false;
+  }
+}
+
+function _buildRecordUI(el, d) {
+  const pct = d.hitPct || 0;
+  const pctColor = pct >= 40 ? '#00FF7F' : pct >= 25 ? '#FFD700' : '#FF4444';
+  const ts = d.tierStats || {};
+
+  const tierHtml = ['S','A','B','C'].map(t => {
+    const st = ts[t] || {total:0,hit:0,pct:0};
+    if(!st.total) return '';
+    const c = t==='S'?'#00FF7F':t==='A'?'#FFD700':t==='B'?'#FF8C00':'#22D3EE';
+    return `<div class="rec-tier">
+      <div class="rec-tier-name" style="color:${c}">${t}-TIER</div>
+      <div class="rec-tier-pct" style="color:${c}">${st.pct}%</div>
+      <div class="rec-tier-sub">${st.hit}/${st.total} HIT</div>
+    </div>`;
+  }).join('');
+
+  const daysHtml = (d.days || []).map((day, i) => {
+    const fillPct = day.total ? Math.round(day.hit/day.total*100) : 0;
+    const dc = day.hit >= 3 ? '#00FF7F' : day.hit >= 2 ? '#FFD700' : '#FF4444';
+    const picksHtml = (day.players||[]).map(p => {
+      const tc = p.tier==='S'?'#00FF7F':p.tier==='A'?'#FFD700':p.tier==='B'?'#FF8C00':'#22D3EE';
+      return `<div class="rec-pick">
+        <span class="rec-pick-tier" style="background:${tc}20;color:${tc};border:1px solid ${tc}40">${p.tier}</span>
+        <span class="rec-pick-name">${p.name} <span class="rec-pick-team">${p.team}</span></span>
+        <span class="rec-pick-result ${p.hit?'hit':'miss'}">${p.hit?'⚡ HR':'✗ NO HR'}</span>
+      </div>`;
+    }).join('');
+    return `<div class="rec-day">
+      <div class="rec-day-hd" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'||!this.nextElementSibling.style.display?'':'none'">
+        <span class="rec-day-date">${day.date}</span>
+        <div class="rec-day-bar"><div class="rec-day-fill" style="width:${fillPct}%"></div></div>
+        <span class="rec-day-score" style="color:${dc}">${day.hit}/${day.total}</span>
+      </div>
+      <div class="rec-picks" style="display:${i===0?'':'none'}">${picksHtml}</div>
+    </div>`;
+  }).join('') || '<div class="empty-msg">NO HISTORY YET — CHECK BACK TOMORROW</div>';
+
+  el.innerHTML = `
+    <div class="hero-hd" style="margin-bottom:16px">
+      <span class="hero-hd-title">⬥ Pick Record</span>
+      <span class="hero-hd-ct">${d.days?.length||0} days</span>
+      <div class="hero-hd-line"></div>
+    </div>
+    <div class="record-summary">
+      <div class="rec-stat"><div class="rec-stat-val" style="color:${pctColor}">${pct}%</div><div class="rec-stat-lbl">Hit Rate</div></div>
+      <div class="rec-stat"><div class="rec-stat-val">${d.totalHit||0}</div><div class="rec-stat-lbl">Picks Hit</div></div>
+      <div class="rec-stat"><div class="rec-stat-val">${d.totalPick||0}</div><div class="rec-stat-lbl">Total Picks</div></div>
+      <div class="rec-stat"><div class="rec-stat-val">${d.days?.length||0}</div><div class="rec-stat-lbl">Days Tracked</div></div>
+    </div>
+    <div class="rec-tier-row">${tierHtml}</div>
+    ${daysHtml}`;
 }
 
 function filterPlayers(players) {

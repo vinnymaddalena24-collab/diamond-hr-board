@@ -2821,6 +2821,46 @@ class Handler(BaseHTTPRequestHandler):
                 traceback.print_exc()
                 self.send_json({"error": str(e)}, 500)
 
+        elif path == "/api/record":
+            # Full 30-day graded pick history
+            try:
+                with _history_lock:
+                    hist = _load_history()
+                days = []
+                total_hit = total_pick = 0
+                tier_totals = {"S": [0,0], "A": [0,0], "B": [0,0], "C": [0,0]}
+                for date_str in sorted(hist.keys(), reverse=True)[:30]:
+                    entry = hist[date_str]
+                    results = fetch_yesterday_hr_results(date_str)
+                    graded = []
+                    day_hit = 0
+                    for p in entry.get("players", []):
+                        hit = p["name"] in results
+                        if hit: day_hit += 1
+                        t = p.get("tier", "C")
+                        if t in tier_totals:
+                            tier_totals[t][0] += 1
+                            if hit: tier_totals[t][1] += 1
+                        graded.append({"name": p["name"], "team": p["team"],
+                                       "tier": t, "score": p["score"],
+                                       "pitcher": p.get("pitcher",""), "hit": hit})
+                    total_hit  += day_hit
+                    total_pick += len(graded)
+                    days.append({"date": date_str, "hit": day_hit,
+                                 "total": len(graded), "players": graded})
+                self.send_json({
+                    "days":       days,
+                    "totalHit":   total_hit,
+                    "totalPick":  total_pick,
+                    "hitPct":     round(total_hit / total_pick * 100, 1) if total_pick else 0,
+                    "tierStats":  {t: {"total": v[0], "hit": v[1],
+                                       "pct": round(v[1]/v[0]*100,1) if v[0] else 0}
+                                   for t, v in tier_totals.items()},
+                })
+            except Exception as e:
+                traceback.print_exc()
+                self.send_json({"error": str(e)}, 500)
+
         elif path == "/api/refresh":
             with _cache_lock:
                 _cache.clear()
