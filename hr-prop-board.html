@@ -500,6 +500,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .live-hr-pill .lhp-hr{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#00FF7F}
 .live-hr-pill .lhp-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;background:rgba(0,255,127,.2);color:#00FF7F;border:1px solid rgba(0,255,127,.4);padding:1px 5px;border-radius:2px}
 .live-hr-empty{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px}
+.live-hr-dbg{font-size:11px;cursor:pointer;opacity:.4;margin-left:4px}.live-hr-dbg:hover{opacity:1}
 .inj-bar{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:9px 13px;margin-bottom:16px}
 .inj-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--red);margin-bottom:6px}
 .inj-chips{display:flex;flex-wrap:wrap;gap:4px}
@@ -671,6 +672,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     <span class="live-hr-title">TODAY'S HOME RUNS</span>
     <span class="live-hr-ct" id="liveHrCt">0</span>
     <span class="live-hr-ts" id="liveHrTs"></span>
+    <span class="live-hr-dbg" onclick="debugHRs()" title="Debug">🔍</span>
   </div>
   <div class="live-hr-list" id="liveHrList"></div>
 </div>
@@ -1542,6 +1544,17 @@ function startHRTracker() {
   fetchLiveHRs();
   if(_hrTimer) clearInterval(_hrTimer);
   _hrTimer = setInterval(fetchLiveHRs, 120000); // every 2 min
+}
+
+async function debugHRs() {
+  try {
+    const res = await fetch(`${API_BASE}/api/hrs_debug`, {cache:'no-store'});
+    const d = await res.json();
+    const lines = (d.games||[]).map(g =>
+      `${g.matchup} [${g.abstractGameState}] HRs: ${(g.hrHitters||[]).map(h=>h.name+' '+h.hr).join(', ')||'none'}${g.bsError?' ERR:'+g.bsError:''}`
+    );
+    alert(`DATE: ${d.date}\nGAMES: ${(d.games||[]).length}\n\n${lines.join('\n')}`);
+  } catch(e) { alert('Debug fetch failed: '+e); }
 }
 
 // ═══════════════════════════════════════════════════
