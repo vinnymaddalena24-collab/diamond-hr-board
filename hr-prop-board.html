@@ -1482,69 +1482,54 @@ function renderBestBets() {
   if (!topPlays.length) { banner.style.display = 'none'; return; }
 
   const plays = topPlays.slice(0, 5);
-  if (selectedPickIdx >= plays.length) selectedPickIdx = 0;
-  const sel = plays[selectedPickIdx];
-  const selT = sel.tier || tierOf(sel.score||0);
-  const selColor = tierColor(selT);
-
-  // ── Circle row ──────────────────────────────────────────────────────────
   const isMob = window.innerWidth < 520;
-  const D = isMob ? 72 : 86; // circle diameter
+  const D = isMob ? 68 : 80;
 
-  const circlesHtml = plays.map((p, i) => {
-    const t   = p.tier || tierOf(p.score||0);
-    const tc  = tierColor(t);
-    const act = i === selectedPickIdx;
+  const cardsHtml = plays.map(p => {
+    const t  = p.tier || tierOf(p.score||0);
+    const tc = tierColor(t);
+    const reasons = buildPickReasons(p);
+    const reasonStr = reasons.join(' · ') || `${t}-tier projection`;
+    const oppLast = (p.pitcher||'TBD').split(' ').pop();
+    const trend = trendHtml(p);
     const photo = p.mlbId
-      ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current" style="width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:${act?1:.55}">`
+      ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
       : `<span style="font-size:22px">⚾</span>`;
     const nameParts = p.name.split(' ');
-    const lastName = nameParts[nameParts.length-1];
-    return `<div onclick="selectPick(${i})" style="
-      display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0">
-      <div style="
-        width:${D}px;height:${D}px;border-radius:50%;
-        border:2px solid ${act ? tc : tc+'55'};
-        ${act ? `box-shadow:0 0 0 3px ${tc}22,0 0 20px ${tc}22` : ''};
-        background:${act ? `rgba(${tc==='#00FF7F'?'0,255,127':tc==='#FFD700'?'255,215,0':tc==='#FF8C00'?'255,140,0':'34,211,238'},.08)` : 'var(--card)'};
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        position:relative;overflow:hidden;transition:all .18s">
+    const lastName  = nameParts[nameParts.length-1];
+    const probCls = (p.hrProb||0) >= 20 ? 'hpg' : (p.hrProb||0) >= 12 ? 'hpa' : '';
+    return `<div onclick="scrollToGame('${p.gameId||''}')" style="
+      display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+      flex:1;min-width:${isMob?70:88}px;max-width:120px">
+      <!-- circle -->
+      <div style="width:${D}px;height:${D}px;border-radius:50%;
+        border:2px solid ${tc};
+        box-shadow:0 0 0 3px ${tc}22,0 0 14px ${tc}18;
+        display:flex;align-items:center;justify-content:center;
+        position:relative;overflow:hidden;background:var(--card);flex-shrink:0">
         ${photo}
         <div style="position:absolute;bottom:0;left:0;right:0;
-          background:linear-gradient(transparent,rgba(0,0,0,.85));
-          text-align:center;padding:3px 2px 4px;
-          font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
-          color:${act?tc:'#aaa'}">
+          background:linear-gradient(transparent,rgba(0,0,0,.88));
+          text-align:center;padding:2px 0 3px;
+          font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:${tc}">
           ${p.score}
         </div>
       </div>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMob?8:9}px;font-weight:700;color:${act?'#fff':'var(--sub)'};text-align:center;max-width:${D+4}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastName}</span>
+      <!-- name -->
+      <div style="text-align:center;width:100%">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:${isMob?9:10}px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${lastName} ${trend}
+        </div>
+        <div style="font-size:9px;color:var(--muted);margin-top:1px">${p.team}</div>
+      </div>
+      <!-- detail row -->
+      <div style="width:100%;border-top:1px solid ${tc}33;padding-top:5px;text-align:center">
+        <div style="font-size:9px;color:var(--sub);margin-bottom:2px">vs ${oppLast}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:${tc};font-weight:700;line-height:1.3;word-break:break-word">${reasonStr}</div>
+        ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}" style="margin:4px auto 0">${p.hrProb}%</div>` : ''}
+      </div>
     </div>`;
   }).join('');
-
-  // ── Selected pick detail ─────────────────────────────────────────────────
-  const reasons = buildPickReasons(sel);
-  const reasonStr = reasons.join(' · ') || `${selT}-tier projection`;
-  const oppLast = (sel.pitcher||'TBD').split(' ').pop();
-  const probCls = (sel.hrProb||0) >= 20 ? 'hpg' : (sel.hrProb||0) >= 12 ? 'hpa' : '';
-  const trend = trendHtml(sel);
-  const photo = sel.mlbId
-    ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${sel.mlbId}/headshot/67/current">`
-    : '⚾';
-
-  const detailHtml = `<div class="hero-card ht${selT}" style="border-top:none;margin:0;border-radius:0;cursor:pointer" onclick="scrollToGame('${sel.gameId||''}')">
-    <div class="hero-photo">${photo}</div>
-    <div class="hero-mid">
-      <div class="hero-name">${sel.name} ${trend} <span class="p-team">${sel.team}</span>${sel.lineupPos>0?`<span class="p-ord">#${sel.lineupPos}</span>`:''}</div>
-      <div class="hero-opp">vs ${oppLast}${sel.hrPct?` · ${sel.hrPct.toFixed(1)}% HR rate`:''}</div>
-      <div class="hero-reason">${reasonStr}</div>
-    </div>
-    <div class="hero-right">
-      <div class="hero-score">${sel.score}</div>
-      <div class="hero-tier-badge">${selT}</div>
-      ${sel.hrProb > 0 ? `<div class="hero-prob ${probCls}">${sel.hrProb}%</div>` : ''}
-    </div>
-  </div>`;
 
   banner.innerHTML = `
     <div class="hero-hd">
@@ -1552,16 +1537,10 @@ function renderBestBets() {
       <span class="hero-hd-ct">${plays.length}</span>
       <div class="hero-hd-line"></div>
     </div>
-    <div style="display:flex;gap:${isMob?10:14}px;align-items:center;justify-content:center;padding:14px 16px 12px;flex-wrap:wrap">
-      ${circlesHtml}
-    </div>
-    ${detailHtml}`;
+    <div style="display:flex;gap:${isMob?8:12}px;align-items:flex-start;justify-content:center;padding:14px 16px 16px;flex-wrap:wrap">
+      ${cardsHtml}
+    </div>`;
   banner.style.display = '';
-}
-
-function selectPick(idx) {
-  selectedPickIdx = idx;
-  renderBestBets();
 }
 
 function renderPicks() {
