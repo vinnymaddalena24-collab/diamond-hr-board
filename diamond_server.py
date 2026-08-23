@@ -2160,6 +2160,55 @@ def _save_history(data):
     with open(HISTORY_FILE, "w") as f:
         json.dump(data, f)
 
+def fetch_hrs_today(date_str):
+    """Live HR tracker — returns every batter who has hit an HR today so far.
+    Polls live box scores; cached for 90s to stay fresh during games."""
+    cached = cache_get(f"hrs_today_{date_str}", ttl=90)
+    if cached is not None:
+        return cached
+    try:
+        url = (f"https://statsapi.mlb.com/api/v1/schedule"
+               f"?sportId=1&date={date_str}&hydrate=boxscore&gameType=R")
+        data = fetch(url)
+        hitters = []
+        seen = set()
+        for d in data.get("dates", []):
+            for game in d.get("games", []):
+                status = game.get("status", {}).get("abstractGameState", "")
+                game_id = game.get("gamePk")
+                away = game.get("teams", {}).get("away", {}).get("team", {}).get("abbreviation", "")
+                home = game.get("teams", {}).get("home", {}).get("team", {}).get("abbreviation", "")
+                matchup = f"{away}@{home}"
+                bs = game.get("liveData", {}).get("boxscore", {})
+                for side in ("home", "away"):
+                    for pid_str, info in bs.get("teams", {}).get(side, {}).get("players", {}).items():
+                        stats = info.get("stats", {}).get("batting", {})
+                        hrs = stats.get("homeRuns", 0)
+                        if hrs > 0:
+                            full_name = info.get("person", {}).get("fullName", "")
+                            mlb_id = info.get("person", {}).get("id")
+                            team = home if side == "home" else away
+                            key = f"{full_name}_{date_str}"
+                            if key not in seen:
+                                seen.add(key)
+                                hitters.append({
+                                    "name":    full_name,
+                                    "mlbId":   mlb_id,
+                                    "team":    team,
+                                    "hr":      hrs,
+                                    "matchup": matchup,
+                                    "final":   status == "Final",
+                                })
+        # Sort: multiple HRs first, then alpha
+        hitters.sort(key=lambda x: (-x["hr"], x["name"]))
+        result = {"date": date_str, "hitters": hitters, "count": len(hitters)}
+        cache_set(f"hrs_today_{date_str}", result)
+        return result
+    except Exception as e:
+        print(f"[hrs_today] Error: {e}")
+        return {"date": date_str, "hitters": [], "count": 0}
+
+
 def log_predictions(date_str, players):
     """Persist today's top-5 scored players so we can grade them tomorrow."""
     with _history_lock:
@@ -2860,6 +2909,11 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 self.send_json({"error": str(e)}, 500)
+
+        elif path == "/api/hrs_today":
+            today = datetime.now().strftime("%Y-%m-%d")
+            result = fetch_hrs_today(today)
+            self.send_json(result)
 
         elif path == "/api/refresh":
             with _cache_lock:

@@ -484,6 +484,22 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .rec-pick-result{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:2px 8px;border-radius:2px;flex-shrink:0}
 .rec-pick-result.hit{background:rgba(0,255,127,.12);color:#00FF7F;border:1px solid rgba(0,255,127,.3)}
 .rec-pick-result.miss{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
+/* ── LIVE HR TRACKER ── */
+.live-hr-bar{background:#000;border-bottom:1px solid var(--border);padding:10px 20px 14px}
+.live-hr-hd{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:#00FF7F;box-shadow:0 0 6px #00FF7F;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.live-hr-title{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:3px;color:#00FF7F;text-transform:uppercase}
+.live-hr-ct{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;background:#00FF7F;color:#000;padding:1px 7px;border-radius:2px;min-width:22px;text-align:center}
+.live-hr-ts{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-left:auto}
+.live-hr-list{display:flex;flex-wrap:wrap;gap:6px}
+.live-hr-pill{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);padding:5px 10px;cursor:default}
+.live-hr-pill.is-pick{border-color:rgba(0,255,127,.45);background:rgba(0,255,127,.06)}
+.live-hr-pill .lhp-name{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--text)}
+.live-hr-pill .lhp-team{font-size:10px;color:var(--sub)}
+.live-hr-pill .lhp-hr{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#00FF7F}
+.live-hr-pill .lhp-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;background:rgba(0,255,127,.2);color:#00FF7F;border:1px solid rgba(0,255,127,.4);padding:1px 5px;border-radius:2px}
+.live-hr-empty{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px}
 .inj-bar{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:9px 13px;margin-bottom:16px}
 .inj-hd{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:2px;color:var(--red);margin-bottom:6px}
 .inj-chips{display:flex;flex-wrap:wrap;gap:4px}
@@ -646,6 +662,17 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     <div class="yt-game-strip" id="ytGameStrip"></div>
     <div class="yt-detail" id="ytDetail"></div>
   </div>
+</div>
+
+<!-- LIVE HR TRACKER -->
+<div class="live-hr-bar" id="liveHrBar" style="display:none">
+  <div class="live-hr-hd">
+    <span class="live-dot"></span>
+    <span class="live-hr-title">TODAY'S HOME RUNS</span>
+    <span class="live-hr-ct" id="liveHrCt">0</span>
+    <span class="live-hr-ts" id="liveHrTs"></span>
+  </div>
+  <div class="live-hr-list" id="liveHrList"></div>
 </div>
 
 <!-- BEST BETS BANNER -->
@@ -1222,6 +1249,10 @@ async function loadDay(dateObj) {
     }
     render();
     loadHistory(ds);
+    // Live HR tracker — only runs for today's date
+    const isToday = dateObj.toDateString() === (new Date()).toDateString();
+    if(isToday) startHRTracker();
+    else { if(_hrTimer){clearInterval(_hrTimer);_hrTimer=null;} document.getElementById('liveHrBar').style.display='none'; }
     // If build was partial (Savant not ready yet), refresh in 90s for full data
     const refreshDelay = data.partial ? 90000 : REFRESH_MS;
     autoRefreshTimer = setTimeout(()=>loadDay(currentDate), refreshDelay);
@@ -1457,6 +1488,58 @@ function renderBestBets() {
 
 function renderPicks() {
   renderBestBets();
+}
+
+// ═══════════════════════════════════════════════════
+// LIVE HR TRACKER
+// ═══════════════════════════════════════════════════
+let _hrData = null, _hrTimer = null;
+
+async function fetchLiveHRs() {
+  try {
+    const res = await fetch(`${API_BASE}/api/hrs_today`, {cache:'no-store'});
+    _hrData = await res.json();
+  } catch(e) { /* keep old data if any */ }
+  renderLiveHRs();
+}
+
+function renderLiveHRs() {
+  const bar  = document.getElementById('liveHrBar');
+  const list = document.getElementById('liveHrList');
+  const ct   = document.getElementById('liveHrCt');
+  const ts   = document.getElementById('liveHrTs');
+  if(!_hrData) { bar.style.display='none'; return; }
+
+  // Build set of today's top-pick names for cross-reference
+  const pickNames = new Set((serverTop5||[]).map(p=>p.name));
+
+  const hitters = _hrData.hitters || [];
+  ct.textContent = hitters.length;
+  const now = new Date();
+  ts.textContent = `UPDATED ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+
+  if(!hitters.length) {
+    list.innerHTML = '<span class="live-hr-empty">NO HOME RUNS YET TODAY</span>';
+  } else {
+    list.innerHTML = hitters.map(h => {
+      const isPick = pickNames.has(h.name);
+      const multi  = h.hr > 1 ? `<span class="lhp-hr">${h.hr}x HR</span>` : `<span class="lhp-hr">⚡ HR</span>`;
+      const badge  = isPick ? `<span class="lhp-badge">OUR PICK</span>` : '';
+      return `<div class="live-hr-pill${isPick?' is-pick':''}">
+        ${multi}
+        <span class="lhp-name">${h.name}</span>
+        <span class="lhp-team">${h.team}</span>
+        ${badge}
+      </div>`;
+    }).join('');
+  }
+  bar.style.display = '';
+}
+
+function startHRTracker() {
+  fetchLiveHRs();
+  if(_hrTimer) clearInterval(_hrTimer);
+  _hrTimer = setInterval(fetchLiveHRs, 120000); // every 2 min
 }
 
 // ═══════════════════════════════════════════════════
