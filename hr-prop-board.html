@@ -1439,32 +1439,112 @@ function buildPlayers(g) {
 // ═══════════════════════════════════════════════════
 // TOP PICKS
 // ═══════════════════════════════════════════════════
+let selectedPickIdx = 0;
+
 function trendHtml(p) {
   const t = p.trend || 0;
-  if (t >=  2) return `<span class="trend-up2" title="On fire — 7d HR rate 60%+ above 15d avg">▲▲</span>`;
-  if (t >=  1) return `<span class="trend-up1" title="Heating up — 7d HR rate above 15d avg">▲</span>`;
-  if (t <= -2) return `<span class="trend-dn2" title="Going cold — 7d HR rate 65%+ below 15d avg">▼▼</span>`;
-  if (t <= -1) return `<span class="trend-dn1" title="Cooling off — 7d HR rate below 15d avg">▼</span>`;
+  if (t >=  2) return `<span class="trend-up2" title="On fire">▲▲</span>`;
+  if (t >=  1) return `<span class="trend-up1" title="Heating up">▲</span>`;
+  if (t <= -2) return `<span class="trend-dn2" title="Going cold">▼▼</span>`;
+  if (t <= -1) return `<span class="trend-dn1" title="Cooling off">▼</span>`;
   return '';
+}
+
+function tierColor(t) {
+  return {S:'#00FF7F',A:'#FFD700',B:'#FF8C00',C:'#22D3EE'}[t] || '#444';
+}
+
+function buildPickReasons(p) {
+  const bd = p.scoreBreakdown || {};
+  const r = [];
+  if (bd.recency > 3) r.push('🔥 Hot streak');
+  if (bd.vuln_p > 0)  r.push('Weak starter');
+  if (bd.wind > 2)    r.push('Wind out');
+  if (bd.park > 3)    r.push('HR park');
+  if (bd.platoon > 3) r.push('Platoon edge');
+  if (bd.barrel > 6)  r.push('Elite barrel%');
+  if (bd.fatigue > 0) r.push('Tired pitcher');
+  if (bd.h2h > 0)     r.push('Owns pitcher');
+  return r.slice(0,3);
 }
 
 function renderBestBets() {
   const banner = document.getElementById('bestBets');
-  const grid   = document.getElementById('bestBetsGrid');
 
-  // Build top plays: use serverTop5 if available, else pull from active games
   let topPlays = [...serverTop5];
   if (!topPlays.length && activeGames.length) {
     topPlays = activeGames.flatMap(g => buildPlayers(g))
-      .filter(p => (p.score||0) >= 68)  // A-tier minimum
+      .filter(p => (p.score||0) >= 68)
       .sort((a,b) => (b.score||0) - (a.score||0))
       .slice(0, 5);
   }
-  // Filter server top5 to only show genuine value (A-tier+)
   topPlays = topPlays.filter(p => (p.score||0) >= 65);
   if (!topPlays.length) { banner.style.display = 'none'; return; }
 
-  const plays = topPlays.slice(0, 5);  // max 5 picks — fewer, better
+  const plays = topPlays.slice(0, 5);
+  if (selectedPickIdx >= plays.length) selectedPickIdx = 0;
+  const sel = plays[selectedPickIdx];
+  const selT = sel.tier || tierOf(sel.score||0);
+  const selColor = tierColor(selT);
+
+  // ── Circle row ──────────────────────────────────────────────────────────
+  const isMob = window.innerWidth < 520;
+  const D = isMob ? 72 : 86; // circle diameter
+
+  const circlesHtml = plays.map((p, i) => {
+    const t   = p.tier || tierOf(p.score||0);
+    const tc  = tierColor(t);
+    const act = i === selectedPickIdx;
+    const photo = p.mlbId
+      ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current" style="width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:${act?1:.55}">`
+      : `<span style="font-size:22px">⚾</span>`;
+    const nameParts = p.name.split(' ');
+    const lastName = nameParts[nameParts.length-1];
+    return `<div onclick="selectPick(${i})" style="
+      display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex-shrink:0">
+      <div style="
+        width:${D}px;height:${D}px;border-radius:50%;
+        border:2px solid ${act ? tc : tc+'55'};
+        ${act ? `box-shadow:0 0 0 3px ${tc}22,0 0 20px ${tc}22` : ''};
+        background:${act ? `rgba(${tc==='#00FF7F'?'0,255,127':tc==='#FFD700'?'255,215,0':tc==='#FF8C00'?'255,140,0':'34,211,238'},.08)` : 'var(--card)'};
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        position:relative;overflow:hidden;transition:all .18s">
+        ${photo}
+        <div style="position:absolute;bottom:0;left:0;right:0;
+          background:linear-gradient(transparent,rgba(0,0,0,.85));
+          text-align:center;padding:3px 2px 4px;
+          font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+          color:${act?tc:'#aaa'}">
+          ${p.score}
+        </div>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMob?8:9}px;font-weight:700;color:${act?'#fff':'var(--sub)'};text-align:center;max-width:${D+4}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastName}</span>
+    </div>`;
+  }).join('');
+
+  // ── Selected pick detail ─────────────────────────────────────────────────
+  const reasons = buildPickReasons(sel);
+  const reasonStr = reasons.join(' · ') || `${selT}-tier projection`;
+  const oppLast = (sel.pitcher||'TBD').split(' ').pop();
+  const probCls = (sel.hrProb||0) >= 20 ? 'hpg' : (sel.hrProb||0) >= 12 ? 'hpa' : '';
+  const trend = trendHtml(sel);
+  const photo = sel.mlbId
+    ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${sel.mlbId}/headshot/67/current">`
+    : '⚾';
+
+  const detailHtml = `<div class="hero-card ht${selT}" style="border-top:none;margin:0;border-radius:0;cursor:pointer" onclick="scrollToGame('${sel.gameId||''}')">
+    <div class="hero-photo">${photo}</div>
+    <div class="hero-mid">
+      <div class="hero-name">${sel.name} ${trend} <span class="p-team">${sel.team}</span>${sel.lineupPos>0?`<span class="p-ord">#${sel.lineupPos}</span>`:''}</div>
+      <div class="hero-opp">vs ${oppLast}${sel.hrPct?` · ${sel.hrPct.toFixed(1)}% HR rate`:''}</div>
+      <div class="hero-reason">${reasonStr}</div>
+    </div>
+    <div class="hero-right">
+      <div class="hero-score">${sel.score}</div>
+      <div class="hero-tier-badge">${selT}</div>
+      ${sel.hrProb > 0 ? `<div class="hero-prob ${probCls}">${sel.hrProb}%</div>` : ''}
+    </div>
+  </div>`;
 
   banner.innerHTML = `
     <div class="hero-hd">
@@ -1472,42 +1552,16 @@ function renderBestBets() {
       <span class="hero-hd-ct">${plays.length}</span>
       <div class="hero-hd-line"></div>
     </div>
-    <div class="best-bets-grid">
-      ${plays.map((p, i) => {
-        const t = p.tier || tierOf(p.score || 0);
-        const photo = p.mlbId
-          ? `<img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:silo:current.png,q_auto:best,f_auto/v1/people/${p.mlbId}/headshot/67/current">`
-          : '⚾';
-        const bd = p.scoreBreakdown || {};
-        const reasons = [];
-        if (bd.vuln_p > 0)  reasons.push('Weak starter');
-        if (bd.wind > 2)    reasons.push('Wind out');
-        if (bd.park > 3)    reasons.push('HR park');
-        if (bd.recency > 3) reasons.push('Hot streak 🔥');
-        if (bd.platoon > 3) reasons.push('Platoon edge');
-        if (bd.barrel > 6)  reasons.push('Elite barrel%');
-        if (bd.fatigue > 0) reasons.push('Tired pitcher');
-        if (bd.h2h > 0)     reasons.push('Owns pitcher');
-        const reasonStr = reasons.slice(0,2).join(' · ') || `${t}-tier projection`;
-        const probCls = (p.hrProb||0) >= 20 ? 'hpg' : (p.hrProb||0) >= 12 ? 'hpa' : '';
-        const oppLast = (p.pitcher||'TBD').split(' ').pop();
-        const trend = trendHtml(p);
-        return `<div class="hero-card ht${t}" onclick="scrollToGame('${p.gameId||''}')">
-          <div class="hero-photo">${photo}</div>
-          <div class="hero-mid">
-            <div class="hero-name">${p.name} ${trend} <span class="p-team">${p.team}</span>${p.lineupPos>0?`<span class="p-ord">#${p.lineupPos}</span>`:''}</div>
-            <div class="hero-opp">vs ${oppLast}${p.hrPct?` · ${p.hrPct.toFixed(1)}% HR rate`:''}</div>
-            <div class="hero-reason">${reasonStr}</div>
-          </div>
-          <div class="hero-right">
-            <div class="hero-score">${p.score}</div>
-            <div class="hero-tier-badge">${t}</div>
-            ${p.hrProb > 0 ? `<div class="hero-prob ${probCls}">${p.hrProb}%</div>` : ''}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
+    <div style="display:flex;gap:${isMob?10:14}px;align-items:center;justify-content:center;padding:14px 16px 12px;flex-wrap:wrap">
+      ${circlesHtml}
+    </div>
+    ${detailHtml}`;
   banner.style.display = '';
+}
+
+function selectPick(idx) {
+  selectedPickIdx = idx;
+  renderBestBets();
 }
 
 function renderPicks() {
@@ -2022,9 +2076,7 @@ function filterPlayers(players) {
 }
 
 function renderBoardWithStrip() {
-  const eraC = era => era<=3.5?'good':era>=4.5?'bad':'mid';
-
-  // Only include games with qualifying players (for filter tabs)
+  // Only include games with qualifying players
   const qualifyingGames = activeGames.filter(g => {
     if(activeTab==='all') return true;
     return filterPlayers(buildPlayers(g)).length > 0;
@@ -2035,36 +2087,70 @@ function renderBoardWithStrip() {
     return;
   }
 
-  // Reset selection if stale
   if(!selectedBoardGame || !qualifyingGames.find(g=>g.id===selectedBoardGame)) {
     selectedBoardGame = qualifyingGames[0].id;
   }
 
-  const stripHtml = qualifyingGames.map(g => {
+  const selGame     = qualifyingGames.find(g=>g.id===selectedBoardGame) || qualifyingGames[0];
+  const gamePlayers = filterPlayers(buildPlayers(selGame));
+  const wx          = activeWX[selGame.id]||{};
+
+  // ── Radial bubble ring ────────────────────────────────────────────────────
+  const isMobile = window.innerWidth < 600;
+  const R      = isMobile ? 118 : 170;   // orbit radius
+  const BS     = isMobile ? 54  : 68;    // bubble diameter
+  const CX     = R + BS/2 + 4;           // center of the radial canvas
+  const N      = qualifyingGames.length;
+  const WRAP   = (CX*2);
+
+  const bubbles = qualifyingGames.map((g, i) => {
+    const angle  = (i / N) * 2 * Math.PI - Math.PI / 2; // start from top
+    const x      = CX + R * Math.cos(angle) - BS/2;
+    const y      = CX + R * Math.sin(angle) - BS/2;
     const players  = buildPlayers(g);
     const topScore = players.length ? Math.max(...players.map(p=>p.score||0)) : 0;
     const topTier  = topScore >= 82 ? 'S' : topScore >= 68 ? 'A' : topScore >= 52 ? 'B' : topScore >= 36 ? 'C' : '';
-    const active   = g.id === selectedBoardGame ? ' active' : '';
-    const tierCls  = topTier ? ` tier-${topTier}` : '';
-    const scoreBadge = topScore > 0 ? `<span class="game-bubble-score">${topScore}</span>` : '';
-    return `<div class="game-bubble${active}${tierCls}" onclick="selectBoardGame('${g.id}')">
-      <div class="game-bubble-ring">
-        <span class="game-bubble-aw">${g.aw}</span>
-        <span class="game-bubble-sep">@</span>
-        <span class="game-bubble-hm">${g.hm}</span>
-        ${scoreBadge}
-      </div>
-      <div class="game-bubble-time">${g.time||''}</div>
+    const isActive = g.id === selectedBoardGame;
+    const tierColor = {S:'#00FF7F',A:'#FFD700',B:'#FF8C00',C:'#22D3EE'}[topTier] || '#333';
+    const borderStyle = isActive
+      ? `border:2px solid #00FF7F;box-shadow:0 0 0 3px rgba(0,255,127,.2),0 0 18px rgba(0,255,127,.15);background:rgba(0,255,127,.07)`
+      : topTier ? `border:2px solid ${tierColor}55` : `border:2px solid #222`;
+    const scoreHtml = topScore > 0 && !isActive
+      ? `<span style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;color:${tierColor};position:absolute;bottom:4px;right:4px">${topScore}</span>`
+      : '';
+    return `<div onclick="selectBoardGame('${g.id}')" style="
+      position:absolute;left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;
+      width:${BS}px;height:${BS}px;border-radius:50%;
+      ${borderStyle};
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      cursor:pointer;transition:all .18s;user-select:none;
+      ${isActive ? '' : 'background:var(--card)'}">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMobile?9:11}px;font-weight:700;color:${isActive?'#00FF7F':'var(--text)'};line-height:1.1">${g.aw}</span>
+      <span style="font-size:7px;color:var(--muted);line-height:1">@</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMobile?9:11}px;font-weight:700;color:${isActive?'rgba(0,255,127,.7)':'var(--sub)'};line-height:1.1">${g.hm}</span>
+      ${scoreHtml}
     </div>`;
   }).join('');
 
-  const selGame = qualifyingGames.find(g=>g.id===selectedBoardGame) || qualifyingGames[0];
-  const gamePlayers = filterPlayers(buildPlayers(selGame));
-  const wx = activeWX[selGame.id]||{};
-  const lockBadge = lockBadgeHtml(selGame);
-  const condBadgesHtml = condBadges(selGame);
+  // ── Center info (selected game) ───────────────────────────────────────────
+  const centerD = isMobile ? 110 : 150;
+  const cx0 = CX - centerD/2, cy0 = CX - centerD/2;
+  const selTop = buildPlayers(selGame).reduce((mx,p)=>Math.max(mx,p.score||0),0);
+  const selTierColor = selTop>=82?'#00FF7F':selTop>=68?'#FFD700':selTop>=52?'#FF8C00':selTop>=36?'#22D3EE':'#444';
+  const centerHtml = `
+    <div style="position:absolute;left:${cx0.toFixed(1)}px;top:${cy0.toFixed(1)}px;
+      width:${centerD}px;height:${centerD}px;border-radius:50%;
+      border:1px solid ${selTierColor}44;background:#0a0a0a;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;pointer-events:none">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMobile?13:16}px;font-weight:700;color:#fff;line-height:1">${selGame.aw}</span>
+      <span style="font-size:9px;color:var(--muted)">@</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:${isMobile?13:16}px;font-weight:700;color:var(--sub);line-height:1">${selGame.hm}</span>
+      ${selTop>0?`<span style="font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;color:${selTierColor};margin-top:4px">${selTop}</span>`:''}
+    </div>`;
 
-  // Compact pitcher name row (no stats — Pitchers tab has full detail)
+  const radialHtml = `<div style="position:relative;width:${WRAP}px;height:${WRAP}px;margin:0 auto;flex-shrink:0">${bubbles}${centerHtml}</div>`;
+
+  // ── Player detail below ───────────────────────────────────────────────────
   function pitcherNamePill(p, team) {
     if (!p || p.n === 'TBD') return `<div class="bd-pill"><span class="bd-pill-team">${team}</span><span class="bd-pill-name" style="color:var(--muted)">TBD</span></div>`;
     const ec = p.era <= 3.5 ? 'var(--green)' : p.era >= 4.5 ? 'var(--red)' : 'var(--amber)';
@@ -2076,6 +2162,8 @@ function renderBoardWithStrip() {
     </div>`;
   }
 
+  const lockBadge    = lockBadgeHtml(selGame);
+  const condBadgesHtml = condBadges(selGame);
   const detailHtml = `<div class="bd-wrap">
     <div class="bd-game-hd">
       <div class="bd-matchup">${selGame.aw} <span style="color:var(--muted)">@</span> ${selGame.hm}</div>
@@ -2089,7 +2177,11 @@ function renderBoardWithStrip() {
     ${gamePlayers.length ? renderGameDetail(selGame, gamePlayers) : '<div class="no-games-msg" style="padding:20px 0">NO PLAYERS MATCH THIS FILTER FOR THIS GAME</div>'}
   </div>`;
 
-  document.getElementById('board').innerHTML = `<div class="game-bubbles">${stripHtml}</div>${detailHtml}`;
+  document.getElementById('board').innerHTML = `
+    <div style="padding:20px 20px 4px;border-bottom:1px solid var(--border);background:#000;overflow:hidden">
+      ${radialHtml}
+    </div>
+    ${detailHtml}`;
 }
 
 function selectBoardGame(id) {
