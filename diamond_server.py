@@ -2928,6 +2928,45 @@ class Handler(BaseHTTPRequestHandler):
             result = fetch_hrs_today(today)
             self.send_json(result)
 
+        elif path == "/api/hrs_debug":
+            # Raw debug — shows game statuses and first game's boxscore player list
+            today = datetime.now().strftime("%Y-%m-%d")
+            sched_url = (f"https://statsapi.mlb.com/api/v1/schedule"
+                         f"?sportId=1&date={today}&gameType=R")
+            try:
+                sched = fetch(sched_url)
+                games_out = []
+                for d in sched.get("dates", []):
+                    for g in d.get("games", []):
+                        gid    = g.get("gamePk")
+                        status = g.get("status", {})
+                        away   = g.get("teams",{}).get("away",{}).get("team",{}).get("abbreviation","")
+                        home   = g.get("teams",{}).get("home",{}).get("team",{}).get("abbreviation","")
+                        game_entry = {
+                            "gamePk": gid, "matchup": f"{away}@{home}",
+                            "abstractGameState": status.get("abstractGameState"),
+                            "detailedState": status.get("detailedState"),
+                            "hrHitters": []
+                        }
+                        if gid and status.get("abstractGameState") != "Preview":
+                            try:
+                                bs = fetch(f"https://statsapi.mlb.com/api/v1/game/{gid}/boxscore")
+                                for side in ("home","away"):
+                                    team_abbr = home if side == "home" else away
+                                    for pid, info in bs.get("teams",{}).get(side,{}).get("players",{}).items():
+                                        hrs = info.get("stats",{}).get("batting",{}).get("homeRuns",0)
+                                        if hrs > 0:
+                                            game_entry["hrHitters"].append({
+                                                "name": info.get("person",{}).get("fullName",""),
+                                                "team": team_abbr, "hr": hrs
+                                            })
+                            except Exception as eg:
+                                game_entry["bsError"] = str(eg)
+                        games_out.append(game_entry)
+                self.send_json({"date": today, "games": games_out})
+            except Exception as e:
+                self.send_json({"error": str(e)}, 500)
+
         elif path == "/api/refresh":
             with _cache_lock:
                 _cache.clear()
