@@ -2959,13 +2959,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(e)}, 500)
 
         elif path == "/api/hrs_today":
-            today = datetime.now().strftime("%Y-%m-%d")
+            # Use client-supplied date (avoids UTC vs local timezone mismatch)
+            qs = urllib.parse.parse_qs(self.path.split("?",1)[1] if "?" in self.path else "")
+            today = qs.get("date", [datetime.now().strftime("%Y-%m-%d")])[0]
             result = fetch_hrs_today(today)
             self.send_json(result)
 
         elif path == "/api/hrs_debug":
             # Raw debug — shows game statuses and first game's boxscore player list
-            today = datetime.now().strftime("%Y-%m-%d")
+            qs2 = urllib.parse.parse_qs(self.path.split("?",1)[1] if "?" in self.path else "")
+            today = qs2.get("date", [datetime.now().strftime("%Y-%m-%d")])[0]
             sched_url = (f"https://statsapi.mlb.com/api/v1/schedule"
                          f"?sportId=1&date={today}&gameType=R")
             try:

@@ -1499,7 +1499,8 @@ let _hrData = null, _hrTimer = null;
 
 async function fetchLiveHRs() {
   try {
-    const res = await fetch(`${API_BASE}/api/hrs_today`, {cache:'no-store'});
+    const ds = fmtDate(new Date()); // always use local browser date
+    const res = await fetch(`${API_BASE}/api/hrs_today?date=${ds}`, {cache:'no-store'});
     _hrData = await res.json();
   } catch(e) { /* keep old data if any */ }
   renderLiveHRs();
@@ -1548,7 +1549,8 @@ function startHRTracker() {
 
 async function debugHRs() {
   try {
-    const res = await fetch(`${API_BASE}/api/hrs_debug`, {cache:'no-store'});
+    const ds = fmtDate(new Date());
+    const res = await fetch(`${API_BASE}/api/hrs_debug?date=${ds}`, {cache:'no-store'});
     const d = await res.json();
     const lines = (d.games||[]).map(g =>
       `${g.matchup} [${g.abstractGameState}] HRs: ${(g.hrHitters||[]).map(h=>h.name+' '+h.hr).join(', ')||'none'}${g.bsError?' ERR:'+g.bsError:''}`
