@@ -254,21 +254,40 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
 /* ── PITCHER CARDS (Pitchers Tab) ── */
 /* Matchup card selector strip */
-.pm-strip{display:flex;gap:10px;overflow-x:auto;padding:14px 16px 10px;border-bottom:1px solid var(--border);scrollbar-width:none;-webkit-overflow-scrolling:touch}
-.pm-strip::-webkit-scrollbar{display:none}
-.pm-card{flex-shrink:0;width:180px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .15s;position:relative}
-.pm-card:hover{border-color:var(--border2);transform:translateY(-1px)}
-.pm-card.active{border-color:var(--green);background:rgba(0,255,127,.05)}
-.pm-matchup{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;color:var(--text);margin-bottom:3px}
-.pm-time{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);margin-bottom:7px}
-.pm-pitchers{display:flex;flex-direction:column;gap:3px}
-.pm-pitcher{font-family:'JetBrains Mono',monospace;font-size:8px;display:flex;align-items:center;gap:5px}
-.pm-pitcher .pm-team{color:var(--muted);width:22px;flex-shrink:0}
-.pm-pitcher .pm-pname{color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pm-pitcher .pm-pera{font-weight:700}
-.pm-pitcher .pm-pera.good{color:var(--green)}
-.pm-pitcher .pm-pera.bad{color:var(--red)}
-.pm-pitcher .pm-pera.mid{color:var(--amber)}
+/* ── GAME BUBBLES ── */
+.game-bubbles{display:flex;flex-wrap:wrap;gap:10px;padding:16px 20px 14px;border-bottom:1px solid var(--border);background:#000}
+.game-bubble{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;flex-shrink:0}
+.game-bubble-ring{
+  width:76px;height:76px;border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  border:2px solid var(--border);
+  background:var(--card);
+  position:relative;transition:all .18s;
+}
+.game-bubble-ring:hover{transform:scale(1.07);border-color:var(--border2)}
+.game-bubble.active .game-bubble-ring{
+  border-color:var(--green);
+  background:rgba(0,255,127,.07);
+  box-shadow:0 0 0 3px rgba(0,255,127,.18),0 0 18px rgba(0,255,127,.12);
+}
+/* tier ring color for games with good picks */
+.game-bubble.tier-S .game-bubble-ring:not(.active .game-bubble-ring){border-color:rgba(0,255,127,.5)}
+.game-bubble.tier-A .game-bubble-ring{border-color:rgba(255,215,0,.4)}
+.game-bubble.tier-B .game-bubble-ring{border-color:rgba(255,140,0,.3)}
+.game-bubble-aw{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--text);line-height:1}
+.game-bubble-sep{font-size:8px;color:var(--muted);line-height:1}
+.game-bubble-hm{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--sub);line-height:1}
+.game-bubble-score{
+  font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;
+  position:absolute;bottom:5px;right:5px;
+  padding:1px 4px;border-radius:2px;line-height:1;
+}
+.game-bubble.tier-S .game-bubble-score{background:rgba(0,255,127,.2);color:#00FF7F}
+.game-bubble.tier-A .game-bubble-score{background:rgba(255,215,0,.2);color:#FFD700}
+.game-bubble.tier-B .game-bubble-score{background:rgba(255,140,0,.2);color:#FF8C00}
+.game-bubble.tier-C .game-bubble-score{background:rgba(34,211,238,.15);color:#22D3EE}
+.game-bubble-time{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted);text-align:center;letter-spacing:.5px}
+@media(max-width:520px){.game-bubbles{gap:8px;padding:12px 14px 10px}.game-bubble-ring{width:66px;height:66px}}
 /* Expanded pitcher detail area */
 .pc-detail{padding:16px 20px}
 .pc-game{margin-bottom:20px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
@@ -2022,15 +2041,20 @@ function renderBoardWithStrip() {
   }
 
   const stripHtml = qualifyingGames.map(g => {
-    const ap=g.ap||{}, hp=g.hp||{};
-    const active = g.id===selectedBoardGame ? ' active' : '';
-    return `<div class="pm-card${active}" onclick="selectBoardGame('${g.id}')">
-      <div class="pm-matchup">${g.aw} @ ${g.hm}</div>
-      <div class="pm-time">${g.time}</div>
-      <div class="pm-pitchers">
-        <div class="pm-pitcher"><span class="pm-team">${g.aw}</span><span class="pm-pname">${ap.n||'TBD'}</span><span class="pm-pera ${eraC(ap.era||4.5)}">${ap.n&&ap.n!=='TBD'?ap.era.toFixed(2):'—'}</span></div>
-        <div class="pm-pitcher"><span class="pm-team">${g.hm}</span><span class="pm-pname">${hp.n||'TBD'}</span><span class="pm-pera ${eraC(hp.era||4.5)}">${hp.n&&hp.n!=='TBD'?hp.era.toFixed(2):'—'}</span></div>
+    const players  = buildPlayers(g);
+    const topScore = players.length ? Math.max(...players.map(p=>p.score||0)) : 0;
+    const topTier  = topScore >= 82 ? 'S' : topScore >= 68 ? 'A' : topScore >= 52 ? 'B' : topScore >= 36 ? 'C' : '';
+    const active   = g.id === selectedBoardGame ? ' active' : '';
+    const tierCls  = topTier ? ` tier-${topTier}` : '';
+    const scoreBadge = topScore > 0 ? `<span class="game-bubble-score">${topScore}</span>` : '';
+    return `<div class="game-bubble${active}${tierCls}" onclick="selectBoardGame('${g.id}')">
+      <div class="game-bubble-ring">
+        <span class="game-bubble-aw">${g.aw}</span>
+        <span class="game-bubble-sep">@</span>
+        <span class="game-bubble-hm">${g.hm}</span>
+        ${scoreBadge}
       </div>
+      <div class="game-bubble-time">${g.time||''}</div>
     </div>`;
   }).join('');
 
@@ -2065,10 +2089,7 @@ function renderBoardWithStrip() {
     ${gamePlayers.length ? renderGameDetail(selGame, gamePlayers) : '<div class="no-games-msg" style="padding:20px 0">NO PLAYERS MATCH THIS FILTER FOR THIS GAME</div>'}
   </div>`;
 
-  const prevScroll = document.querySelector('.pm-strip')?.scrollLeft || 0;
-  document.getElementById('board').innerHTML = `<div class="pm-strip">${stripHtml}</div>${detailHtml}`;
-  const strip = document.querySelector('.pm-strip');
-  if (strip) strip.scrollLeft = prevScroll;
+  document.getElementById('board').innerHTML = `<div class="game-bubbles">${stripHtml}</div>${detailHtml}`;
 }
 
 function selectBoardGame(id) {
