@@ -2161,65 +2161,100 @@ def _save_history(data):
         json.dump(data, f)
 
 def fetch_hrs_today(date_str):
-    """Live HR tracker — returns every batter who has hit an HR today so far.
-    Uses per-game boxscore endpoint so live in-progress stats are included.
-    Cached for 90s."""
+    """Live HR tracker — every MLB batter who has hit an HR today.
+    Tries per-game boxscore endpoint (live stats) AND schedule hydrate fallback.
+    Cached 90s."""
     cached = cache_get(f"hrs_today_{date_str}", ttl=90)
     if cached is not None:
         return cached
+
+    seen   = set()
+    hitters = []
+    errors  = []
+
+    # ── Approach A: per-game /boxscore endpoint (works for live & final) ──
     try:
-        # Step 1: get today's schedule (no hydrate needed — just game IDs)
-        sched_url = (f"https://statsapi.mlb.com/api/v1/schedule"
-                     f"?sportId=1&date={date_str}&gameType=R")
+        sched_url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={date_str}"
         sched = fetch(sched_url)
         games_meta = []
         for d in sched.get("dates", []):
             for game in d.get("games", []):
                 gid    = game.get("gamePk")
-                status = game.get("status", {}).get("abstractGameState", "Preview")
-                away   = game.get("teams", {}).get("away", {}).get("team", {}).get("abbreviation", "")
-                home   = game.get("teams", {}).get("home", {}).get("team", {}).get("abbreviation", "")
-                if gid and status != "Preview":  # only fetch games that have started
-                    games_meta.append({"id": gid, "away": away, "home": home, "final": status == "Final"})
+                state  = game.get("status", {}).get("abstractGameState", "Preview")
+                away   = game.get("teams",{}).get("away",{}).get("team",{}).get("abbreviation","")
+                home   = game.get("teams",{}).get("home",{}).get("team",{}).get("abbreviation","")
+                if gid and state in ("Live", "Final"):
+                    games_meta.append({"id": gid, "away": away, "home": home, "final": state=="Final"})
 
-        # Step 2: fetch each game's boxscore for live batting stats
-        hitters = []
-        seen = set()
+        print(f"[hrs_today] {len(games_meta)} started/final games on {date_str}")
+
         for gm in games_meta:
             try:
-                bs_url = f"https://statsapi.mlb.com/api/v1/game/{gm['id']}/boxscore"
-                bs = fetch(bs_url)
+                bs = fetch(f"https://statsapi.mlb.com/api/v1/game/{gm['id']}/boxscore")
+                matchup = f"{gm['away']}@{gm['home']}"
                 for side in ("home", "away"):
                     team_abbr = gm["home"] if side == "home" else gm["away"]
-                    matchup   = f"{gm['away']}@{gm['home']}"
-                    players   = bs.get("teams", {}).get(side, {}).get("players", {})
-                    for pid_str, info in players.items():
-                        stats = info.get("stats", {}).get("batting", {})
-                        hrs   = stats.get("homeRuns", 0)
+                    for pid, info in bs.get("teams",{}).get(side,{}).get("players",{}).items():
+                        hrs = info.get("stats",{}).get("batting",{}).get("homeRuns",0)
                         if hrs > 0:
-                            full_name = info.get("person", {}).get("fullName", "")
-                            mlb_id    = info.get("person", {}).get("id")
-                            if full_name and full_name not in seen:
-                                seen.add(full_name)
+                            name = info.get("person",{}).get("fullName","")
+                            if name and name not in seen:
+                                seen.add(name)
                                 hitters.append({
-                                    "name":    full_name,
-                                    "mlbId":   mlb_id,
-                                    "team":    team_abbr,
-                                    "hr":      hrs,
+                                    "name": name,
+                                    "mlbId": info.get("person",{}).get("id"),
+                                    "team": team_abbr,
+                                    "hr": hrs,
                                     "matchup": matchup,
-                                    "final":   gm["final"],
+                                    "final": gm["final"],
                                 })
             except Exception as eg:
-                print(f"[hrs_today] game {gm['id']} error: {eg}")
-
-        # Sort: multi-HR first, then alpha
-        hitters.sort(key=lambda x: (-x["hr"], x["name"]))
-        result = {"date": date_str, "hitters": hitters, "count": len(hitters)}
-        cache_set(f"hrs_today_{date_str}", result)
-        return result
+                errors.append(f"game {gm['id']}: {eg}")
     except Exception as e:
-        print(f"[hrs_today] Error: {e}")
-        return {"date": date_str, "hitters": [], "count": 0}
+        errors.append(f"schedule: {e}")
+
+    # ── Approach B: schedule with hydrate=boxscore fallback ──
+    if not hitters:
+        try:
+            url2 = (f"https://statsapi.mlb.com/api/v1/schedule"
+                    f"?sportId=1&date={date_str}&hydrate=boxscore")
+            data2 = fetch(url2)
+            for d in data2.get("dates", []):
+                for game in d.get("games", []):
+                    away = game.get("teams",{}).get("away",{}).get("team",{}).get("abbreviation","")
+                    home = game.get("teams",{}).get("home",{}).get("team",{}).get("abbreviation","")
+                    matchup = f"{away}@{home}"
+                    final = game.get("status",{}).get("abstractGameState","") == "Final"
+                    # try both data paths
+                    for bs in [
+                        game.get("liveData",{}).get("boxscore",{}),
+                        game.get("boxscore",{}),
+                    ]:
+                        for side in ("home","away"):
+                            team_abbr = home if side == "home" else away
+                            for pid, info in bs.get("teams",{}).get(side,{}).get("players",{}).items():
+                                hrs = info.get("stats",{}).get("batting",{}).get("homeRuns",0)
+                                if hrs > 0:
+                                    name = info.get("person",{}).get("fullName","")
+                                    if name and name not in seen:
+                                        seen.add(name)
+                                        hitters.append({
+                                            "name": name,
+                                            "mlbId": info.get("person",{}).get("id"),
+                                            "team": team_abbr,
+                                            "hr": hrs,
+                                            "matchup": matchup,
+                                            "final": final,
+                                        })
+        except Exception as e2:
+            errors.append(f"hydrate fallback: {e2}")
+
+    print(f"[hrs_today] {len(hitters)} HR hitters found. errors={errors}")
+    hitters.sort(key=lambda x: (-x["hr"], x["name"]))
+    result = {"date": date_str, "hitters": hitters, "count": len(hitters), "errors": errors}
+    if hitters or not errors:  # only cache success / true-empty (not error states)
+        cache_set(f"hrs_today_{date_str}", result)
+    return result
 
 
 def log_predictions(date_str, players):
