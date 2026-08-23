@@ -15,7 +15,7 @@ Fetches on every page load:
 All data is cached for 15 minutes so rapid refreshes don't re-fetch.
 """
 
-import json, time, threading, traceback, difflib, os, concurrent.futures
+import json, time, threading, traceback, difflib, os, concurrent.futures, urllib.parse
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
