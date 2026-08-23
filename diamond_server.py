@@ -2172,6 +2172,10 @@ def _save_history(data):
     with open(HISTORY_FILE, "w") as f:
         json.dump(data, f)
 
+# Chronological HR order tracker: {date_str: [(name, first_seen_ts), ...]}
+_hr_seen_order: dict = {}
+_hr_seen_lock  = threading.Lock()
+
 def fetch_hrs_today(date_str):
     """Live HR tracker — every MLB batter who has hit an HR today.
     Tries per-game boxscore endpoint (live stats) AND schedule hydrate fallback.
@@ -2262,9 +2266,22 @@ def fetch_hrs_today(date_str):
             errors.append(f"hydrate fallback: {e2}")
 
     print(f"[hrs_today] {len(hitters)} HR hitters found. errors={errors}")
-    hitters.sort(key=lambda x: (-x["hr"], x["name"]))
+
+    # ── Chronological ordering: track when each player first appeared ──
+    now_ts = time.time()
+    with _hr_seen_lock:
+        day_order = _hr_seen_order.setdefault(date_str, {})
+        for h in hitters:
+            if h["name"] not in day_order:
+                day_order[h["name"]] = now_ts   # first time we saw this HR
+        # Sort by first-seen timestamp (oldest first = chronological order)
+        hitters.sort(key=lambda x: day_order.get(x["name"], now_ts))
+        # Attach order index so frontend can show it
+        for i, h in enumerate(hitters):
+            h["order"] = i + 1
+
     result = {"date": date_str, "hitters": hitters, "count": len(hitters), "errors": errors}
-    if hitters or not errors:  # only cache success / true-empty (not error states)
+    if hitters or not errors:
         cache_set(f"hrs_today_{date_str}", result)
     return result
 

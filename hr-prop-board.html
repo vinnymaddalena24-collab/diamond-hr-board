@@ -498,6 +498,7 @@ button,a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .live-hr-pill .lhp-name{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--text)}
 .live-hr-pill .lhp-team{font-size:10px;color:var(--sub)}
 .live-hr-pill .lhp-hr{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#00FF7F}
+.live-hr-pill .lhp-num{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:var(--muted);min-width:16px;text-align:right}
 .live-hr-pill .lhp-badge{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;background:rgba(0,255,127,.2);color:#00FF7F;border:1px solid rgba(0,255,127,.4);padding:1px 5px;border-radius:2px}
 .live-hr-empty{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px}
 .live-hr-dbg{font-size:11px;cursor:pointer;opacity:.4;margin-left:4px}.live-hr-dbg:hover{opacity:1}
@@ -1530,12 +1531,14 @@ function renderLiveHRs() {
   } else {
     list.innerHTML = hitters.map(h => {
       const isPick = pickNames.has(h.name);
-      const multi  = h.hr > 1 ? `<span class="lhp-hr">${h.hr}x HR</span>` : `<span class="lhp-hr">⚡ HR</span>`;
+      const num    = h.order ? `<span class="lhp-num">${h.order}</span>` : '';
+      const hrTag  = h.hr > 1 ? `<span class="lhp-hr">${h.hr}x HR</span>` : `<span class="lhp-hr">⚡ HR</span>`;
       const badge  = isPick ? `<span class="lhp-badge">OUR PICK</span>` : '';
       return `<div class="live-hr-pill${isPick?' is-pick':''}">
-        ${multi}
+        ${num}
         <span class="lhp-name">${h.name}</span>
         <span class="lhp-team">${h.team}</span>
+        ${hrTag}
         ${badge}
       </div>`;
     }).join('');
