@@ -1964,34 +1964,35 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     profile = 0
 
     # Anchor 1: HR rate (blended with recency above) — the most direct measure
-    profile += min(hr_pct * 2.2, 24)
+    # Reduced cap: 18 (was 24). Profile alone can't win; matchup & recency must confirm.
+    profile += min(hr_pct * 2.0, 18)
 
-    # Anchor 2: Barrel% — best Statcast predictor of HR; no artificial cap at 14
-    # A 20% barrel guy (elite) should score ~18 pts above a 8% average guy
-    profile += min((barrel - 8) * 1.8, 22)
+    # Anchor 2: Barrel% — best Statcast predictor of HR
+    # Reduced cap: 16 (was 22). Elite barrel guy still earns it, but can't float to S alone.
+    profile += min((barrel - 8) * 1.5, 16)
 
     # Anchor 3: HR/FB% — direct: what % of fly balls leave the park
     if hr_fb_pct > 13:
-        profile += min((hr_fb_pct - 13) * 0.8, 10)
+        profile += min((hr_fb_pct - 13) * 0.7, 7)
 
-    # Secondary: xwOBA and SLG — quality of contact, power quality
-    profile += min((xwoba - 0.320) * 20, 8) if xwoba > 0.320 else 0
-    profile += min((slg - 0.350) * 18, 8)
+    # Secondary: xwOBA and SLG — quality of contact, power quality (reduced)
+    profile += min((xwoba - 0.320) * 17, 5) if xwoba > 0.320 else 0
+    profile += min((slg - 0.350) * 15, 5)
 
     # xSLG: expected slugging (regresses toward contact quality, not luck)
     xslg = savant_stats.get("xslg", 0)
     if xslg > 0.400:
-        profile += min((xslg - 0.400) * 18, 5)
+        profile += min((xslg - 0.400) * 14, 3)
 
     # Fly ball rate: more chances for balls to carry (league avg ~35%)
     if fb_pct > 35:
-        profile += min((fb_pct - 35) * 0.35, 5)
+        profile += min((fb_pct - 35) * 0.25, 3)
 
-    # OPS — broad offensive production signal
-    profile += min((ops - 0.650) * 20, 8) if ops > 0.650 else 0
+    # OPS — broad offensive production signal (reduced)
+    profile += min((ops - 0.650) * 15, 5) if ops > 0.650 else 0
 
-    # ISO — isolated power, strips out singles noise
-    profile += min((iso - 0.180) * 16, 4) if iso > 0.180 else 0
+    # ISO — isolated power, strips out singles noise (reduced)
+    profile += min((iso - 0.180) * 14, 3) if iso > 0.180 else 0
 
     # Hard hit% — supplementary, low weight (captured mostly by barrel/xwOBA)
     profile += min((hard_hit - 42) * 0.15, 3) if hard_hit > 42 else 0
@@ -2077,14 +2078,50 @@ def calc_composite(batter_stats, savant_stats, pitcher_stats, pf, wx,
     elif bullpen_era >= 4.50: situ += 1
     elif bullpen_era < 3.50:  situ -= 2
 
-    # ── Pitcher quality gate: suppress picks against HR-suppressing pitchers ──
-    # If blended HR/9 < 0.85 (well below league avg), apply hard cap on situ
-    # so great batters don't get inflated scores against elite starters
+    # ── Pitcher quality gate: tightened ────────────────────────────────────────
+    # League avg HR/9 ≈ 1.10. Good pitchers < 0.90, elite < 0.70.
+    # Penalty layered on top of pv already capturing this — extra hard suppression.
     pitcher_hr9_gate = 0
-    if hr9 < 0.70:   pitcher_hr9_gate = -12  # elite HR suppressor
-    elif hr9 < 0.85: pitcher_hr9_gate = -7   # above-average HR suppressor
+    if hr9 < 0.70:   pitcher_hr9_gate = -18  # elite HR suppressor (was -12)
+    elif hr9 < 0.85: pitcher_hr9_gate = -12  # above-avg suppressor (was -7)
+    elif hr9 < 1.00: pitcher_hr9_gate = -5   # NEW: slight drag for below-avg hr9
 
-    score = max(0, min(99, round(profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus + pitcher_hr9_gate)))
+    # ── No-recent-data penalty ─────────────────────────────────────────────────
+    # If we don't have recent_stats we can't detect a cold streak — apply small default
+    no_recent_penalty = 0
+    if not (recent_stats and recent_stats.get("G_recent", 0) >= 5):
+        no_recent_penalty = -6   # unknown recency = assume slightly cold
+
+    raw_score = profile + situ + h2h_adj(h2h) + pitch_matchup_adj + recency_bonus + pitcher_hr9_gate + no_recent_penalty
+    score = max(0, min(99, round(raw_score)))
+
+    # ── ALIGNMENT GATE: high scores MUST have multiple favorable factors ────────
+    # Prevents great batters from showing as top picks on neutral/bad days.
+    # Count genuinely favorable signals for TODAY's specific matchup:
+    strong_factors = 0
+    if recency_bonus >= 7:                   strong_factors += 1  # hot streak (ratio ≥1.5)
+    if pv >= 5:                              strong_factors += 1  # vulnerable pitcher overall
+    if hr9 >= 1.20:                          strong_factors += 1  # pitcher gives up HRs
+    if effective_pf >= 104:                  strong_factors += 1  # HR-friendly park
+    if wind_adj(wx) >= 2.5:                  strong_factors += 1  # wind blowing out
+
+    # Score caps by alignment:
+    #  0 factors → max 52 (solid C; no good reason to bet today)
+    #  1 factor  → max 65 (C+/B−; one positive signal but insufficient)
+    #  2 factors → no cap (top picks require genuine multi-factor confluence)
+    #  3+ factors → bonus
+    if strong_factors == 0:
+        score = min(score, 52)
+    elif strong_factors == 1:
+        score = min(score, 65)
+    elif strong_factors >= 3:
+        score = min(99, score + 5)  # multi-factor bonus
+
+    # ── Pitcher HR/9 hard cap: great pitchers kill even elite matchups ──────────
+    if hr9 < 0.80:
+        score = min(score, 60)     # cannot make top picks vs HR-suppressing SP
+    elif hr9 < 1.00:
+        score = min(score, 74)     # capped below S tier vs above-avg SP
 
     if explain:
         k9_situ_pen = -round(min((k9 - 9.5) * 1.4, 6), 1) if k9 > 9.5 else 0
